@@ -826,6 +826,8 @@ fn show_stack_behind_capture(app: &AppHandle, stack: &tauri::WebviewWindow) {
             }
         }
     }
+    #[cfg(not(windows))]
+    let _ = app;
     let _ = stack.show();
 }
 

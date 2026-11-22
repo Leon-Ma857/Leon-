@@ -206,7 +206,7 @@ extern "C" fn mac_mouse_cb(kind: i32, x: i32, y: i32, fg_pid: i32, is_self: bool
         let now = smart_now_ms();
         match kind {
             0 => tracker.on_lbutton_down(x, y, now),
-            1 => tracker.on_lbutton_up(x, y, now, isize::from(fg_pid), is_self),
+            1 => tracker.on_lbutton_up(x, y, now, fg_pid as isize, is_self),
             _ => tracker.on_other_mouse_button(),
         }
     }
@@ -235,7 +235,7 @@ extern "C" fn mac_key_cb(
             has_mods,
             false,
             smart_now_ms(),
-            isize::from(fg_pid),
+            fg_pid as isize,
             is_self,
         )
     } else {
@@ -335,7 +335,7 @@ pub fn force_window_foreground(raw_ns_window: isize) {
 pub fn capture_external_foreground_pid() -> Option<isize> {
     let pid = unsafe { luma_mac_frontmost_external_pid() };
     if pid > 0 {
-        Some(isize::from(pid))
+        Some(pid as isize)
     } else {
         None
     }

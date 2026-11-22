@@ -192,18 +192,21 @@ fn select_target_monitor(cursor: Option<(i32, i32)>) -> Result<Monitor, String> 
 
 pub fn capture_active_monitor(cursor: Option<(i32, i32)>) -> Result<CapturedScreen, String> {
     let monitor = select_target_monitor(cursor)?;
-    let monitor_x = monitor
+    let raw_x = monitor
         .x()
         .map_err(|e| format!("读取显示器 X 坐标失败: {e}"))?;
-    let monitor_y = monitor
+    let raw_y = monitor
         .y()
         .map_err(|e| format!("读取显示器 Y 坐标失败: {e}"))?;
-    let monitor_width = monitor
-        .width()
-        .map_err(|e| format!("读取显示器宽度失败: {e}"))?;
-    let monitor_height = monitor
-        .height()
-        .map_err(|e| format!("读取显示器高度失败: {e}"))?;
+    #[cfg(not(target_os = "macos"))]
+    let (monitor_width, monitor_height) = (
+        monitor
+            .width()
+            .map_err(|e| format!("读取显示器宽度失败: {e}"))?,
+        monitor
+            .height()
+            .map_err(|e| format!("读取显示器高度失败: {e}"))?,
+    );
     let scale_factor = monitor.scale_factor().unwrap_or(1.0);
 
     let image = monitor
@@ -214,12 +217,14 @@ pub fn capture_active_monitor(cursor: Option<(i32, i32)>) -> Result<CapturedScre
     let (monitor_x, monitor_y, monitor_width, monitor_height) = {
         let sf = f64::from(scale_factor.max(1.0));
         (
-            (f64::from(monitor_x) * sf).round() as i32,
-            (f64::from(monitor_y) * sf).round() as i32,
+            (f64::from(raw_x) * sf).round() as i32,
+            (f64::from(raw_y) * sf).round() as i32,
             image.width(),
             image.height(),
         )
     };
+    #[cfg(not(target_os = "macos"))]
+    let (monitor_x, monitor_y) = (raw_x, raw_y);
 
     let png_bytes = encode_rgba_to_png_bytes(&image)?;
     Ok(CapturedScreen {

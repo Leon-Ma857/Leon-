@@ -1,4 +1,4 @@
-#![cfg_attr(target_os = "macos", allow(dead_code))]
+#![cfg_attr(target_os = "macos", allow(dead_code, unused_imports))]
 
 use crate::config::{apply_proxy, normalize_ocr_lang};
 use crate::win_ocr::{
