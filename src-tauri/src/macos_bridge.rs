@@ -410,3 +410,99 @@ pub fn send_scroll_wheel_at(phys_x: i32, phys_y: i32, delta_lines: i32) {
 pub fn is_escape_pressed() -> bool {
     unsafe { luma_mac_is_escape_pressed() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TempPathCleanup(std::path::PathBuf);
+    impl Drop for TempPathCleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    #[test]
+    fn vision_ocr_recognizes_synthetic_png() {
+        let png = crate::local_ocr::render_synthetic_test_png("LUMA OCR 2026")
+            .expect("synthetic PNG generation failed");
+        let (lang, text, blocks) =
+            ocr_png_with_layout_sync(&png).expect("Apple Vision OCR failed");
+        println!(
+            "[macOS Vision smoke] lang={lang}, blocks={}, text={text:?}",
+            blocks.len()
+        );
+        let upper = text.to_ascii_uppercase();
+        assert!(upper.contains("LUMA"), "expected LUMA in {text:?}");
+        assert!(upper.contains("2026"), "expected 2026 in {text:?}");
+        assert!(!blocks.is_empty(), "expected non-empty layout blocks");
+    }
+
+    #[test]
+    fn pasteboard_copy_files_writes_existing_file() {
+        let png = crate::local_ocr::render_synthetic_test_png("CLIP")
+            .expect("synthetic PNG generation failed");
+        let path = std::env::temp_dir().join(format!(
+            "luma-mac-pb-{}-{}.png",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _cleanup = TempPathCleanup(path.clone());
+        std::fs::write(&path, png).expect("write temp png");
+        copy_files_to_pasteboard(&[path.to_string_lossy().into_owned()])
+            .expect("copy_files_to_pasteboard failed");
+    }
+
+    #[test]
+    fn launch_agent_autostart_roundtrip_and_plutil_valid() {
+        let home = std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .expect("HOME env missing");
+        let plist_path = home
+            .join("Library")
+            .join("LaunchAgents")
+            .join("com.snaptrans.app.plist");
+        struct PlistGuard(std::path::PathBuf);
+        impl Drop for PlistGuard {
+            fn drop(&mut self) {
+                let _ = crate::win_ocr::set_windows_autostart(false);
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _guard = PlistGuard(plist_path.clone());
+
+        crate::win_ocr::set_windows_autostart(true).expect("enable autostart");
+        assert!(plist_path.exists(), "plist should exist at {plist_path:?}");
+
+        let lint = std::process::Command::new("/usr/bin/plutil")
+            .arg("-lint")
+            .arg(&plist_path)
+            .output()
+            .expect("run plutil -lint");
+        assert!(
+            lint.status.success(),
+            "plutil -lint failed: {}",
+            String::from_utf8_lossy(&lint.stderr)
+        );
+
+        let content = std::fs::read_to_string(&plist_path).expect("read LaunchAgent plist");
+        assert!(content.contains("com.snaptrans.app"));
+        assert!(content.contains("<true/>"));
+
+        crate::win_ocr::set_windows_autostart(false).expect("disable autostart");
+        assert!(!plist_path.exists(), "plist should be removed when disabled");
+    }
+
+    #[test]
+    fn scutil_live_proxy_probe_does_not_panic() {
+        let info = crate::config::detect_system_proxy_info();
+        assert!(
+            matches!(info.source.as_str(), "env" | "macos" | "none"),
+            "unexpected proxy source: {}",
+            info.source
+        );
+    }
+}

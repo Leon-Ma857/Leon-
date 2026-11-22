@@ -50,7 +50,7 @@ jobs:
         run: cargo check --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin --bins
 
       - name: Run Rust unit tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin --lib
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin --lib -- --nocapture
 
       - name: Build macOS app & DMG bundle
         shell: bash
@@ -81,6 +81,115 @@ jobs:
 
           ls -lh "$DMG_PATH"
           echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
+          echo "APP_VER=$VER" >> "$GITHUB_ENV"
+
+      - name: Smoke-test mounted DMG, bundle integrity, and Luma.app launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          MNT_DIR="/tmp/luma-mnt"
+          SMOKE_DIR="/tmp/LumaSmoke"
+          LAUNCH_LOG="/tmp/luma-launch.log"
+          mkdir -p "$MNT_DIR" "$SMOKE_DIR"
+
+          cleanup() {
+            set +e
+            if mount | grep -q " on ${MNT_DIR} "; then
+              hdiutil detach "$MNT_DIR" -force || hdiutil detach "$MNT_DIR"
+            fi
+            rm -rf "$SMOKE_DIR" "$LAUNCH_LOG"
+          }
+          trap cleanup EXIT
+
+          echo "=== 1. Mount DMG ==="
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT_DIR" "$DMG_PATH"
+          ls -la "$MNT_DIR"
+          test -d "${MNT_DIR}/Luma.app"
+          test -L "${MNT_DIR}/Applications"
+          LINK_TARGET="$(readlink "${MNT_DIR}/Applications")"
+          echo "Applications symlink -> ${LINK_TARGET}"
+          [[ "$LINK_TARGET" == "/Applications" || "$LINK_TARGET" == "/Applications/" ]]
+
+          echo "=== 2. Verify Info.plist & Icon ==="
+          PLIST="${MNT_DIR}/Luma.app/Contents/Info.plist"
+          plutil -lint "$PLIST"
+          BUNDLE_VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
+          MIN_SYS=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$PLIST")
+          HI_DPI=$(/usr/libexec/PlistBuddy -c "Print :NSHighResolutionCapable" "$PLIST")
+          SCREEN_DESC=$(/usr/libexec/PlistBuddy -c "Print :NSScreenCaptureUsageDescription" "$PLIST")
+          AE_DESC=$(/usr/libexec/PlistBuddy -c "Print :NSAppleEventsUsageDescription" "$PLIST")
+          ICON_FILE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$PLIST")
+          BIN_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$PLIST")
+          echo "Version=$BUNDLE_VER MinOS=$MIN_SYS HiDPI=$HI_DPI Icon=$ICON_FILE Bin=$BIN_NAME"
+          test "$BUNDLE_VER" = "$APP_VER"
+          test "$MIN_SYS" = "12.0"
+          test "$HI_DPI" = "true"
+          test -n "$SCREEN_DESC"
+          test -n "$AE_DESC"
+          test -f "${MNT_DIR}/Luma.app/Contents/Resources/${ICON_FILE}" || test -f "${MNT_DIR}/Luma.app/Contents/Resources/${ICON_FILE}.icns"
+
+          echo "=== 3. Verify arm64 Mach-O, dylib linkage & codesign ==="
+          BIN_PATH="${MNT_DIR}/Luma.app/Contents/MacOS/${BIN_NAME}"
+          FILE_OUT="$(file "$BIN_PATH")"
+          echo "$FILE_OUT"
+          echo "$FILE_OUT" | grep -q "arm64"
+          echo "Linked dylibs:"
+          otool -L "$BIN_PATH"
+          BAD_LIBS="$(otool -L "$BIN_PATH" | tail -n +2 | awk '{print $1}' | grep -Ev '^(/System/Library/|/usr/lib/|@rpath/|@executable_path/)' || true)"
+          if [ -n "$BAD_LIBS" ]; then
+            echo "ERROR: Unexpected non-system dylib dependency found:"
+            echo "$BAD_LIBS"
+            exit 1
+          fi
+          echo "codesign info:"
+          codesign -dv --verbose=2 "${MNT_DIR}/Luma.app" 2>&1 || true
+          codesign --verify --deep --strict "${MNT_DIR}/Luma.app" 2>&1 || true
+
+          echo "=== 4. Install to /tmp/LumaSmoke, xattr -cr, launch & inspect stability ==="
+          ditto "${MNT_DIR}/Luma.app" "${SMOKE_DIR}/Luma.app"
+          xattr -cr "${SMOKE_DIR}/Luma.app"
+          BEFORE_CRASHES="$(ls -1 ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -iE 'luma|snaptrans' || true)"
+
+          "${SMOKE_DIR}/Luma.app/Contents/MacOS/${BIN_NAME}" > "$LAUNCH_LOG" 2>&1 &
+          APP_PID=$!
+          echo "Launched Luma PID=$APP_PID"
+          sleep 8
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "ERROR: Luma exited prematurely during 8s smoke window!"
+            cat "$LAUNCH_LOG" || true
+            exit 1
+          fi
+          echo "Luma survived 8s launch window cleanly."
+          cat "$LAUNCH_LOG" || true
+          if grep -Eqi 'panicked at|fatal runtime error' "$LAUNCH_LOG"; then
+            echo "ERROR: Runtime panic detected in launch log!"
+            exit 1
+          fi
+
+          kill -TERM "$APP_PID" 2>/dev/null || true
+          TERM_WAIT=0
+          while kill -0 "$APP_PID" 2>/dev/null && [ "$TERM_WAIT" -lt 10 ]; do
+            sleep 0.5
+            TERM_WAIT=$((TERM_WAIT + 1))
+          done
+          if kill -0 "$APP_PID" 2>/dev/null; then
+            echo "Process did not exit on SIGTERM within 5s; forcing SIGKILL"
+            kill -KILL "$APP_PID" 2>/dev/null || true
+          fi
+          set +e
+          wait "$APP_PID"
+          APP_RC=$?
+          set -e
+          echo "Luma terminated (wait exit code: $APP_RC)"
+
+          AFTER_CRASHES="$(ls -1 ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -iE 'luma|snaptrans' || true)"
+          NEW_CRASHES="$(comm -13 <(printf '%s\n' "$BEFORE_CRASHES" | sort) <(printf '%s\n' "$AFTER_CRASHES" | sort) || true)"
+          if [ -n "$NEW_CRASHES" ]; then
+            echo "ERROR: New crash reports generated:"
+            echo "$NEW_CRASHES"
+            exit 1
+          fi
+          echo "Smoke test passed with zero crash reports."
 
       - name: Upload macOS DMG artifact
         uses: actions/upload-artifact@v4

@@ -172,6 +172,21 @@ bool luma_mac_work_area_for_point(
 
 // ==================== Apple Vision OCR ====================
 
+static VNRecognizeTextRequest *create_vision_ocr_request(BOOL cpu_only) {
+    VNRecognizeTextRequest *request = [[VNRecognizeTextRequest alloc] initWithCompletionHandler:nil];
+    request.recognitionLevel = VNRequestTextRecognitionLevelAccurate;
+    request.usesLanguageCorrection = YES;
+    request.usesCPUOnly = cpu_only;
+    if (@available(macOS 13.0, *)) {
+        request.automaticallyDetectsLanguage = YES;
+    } else {
+        request.recognitionLanguages = @[
+            @"zh-Hans", @"zh-Hant", @"en-US", @"ja-JP", @"ko-KR", @"fr-FR", @"de-DE", @"es-ES"
+        ];
+    }
+    return request;
+}
+
 bool luma_mac_ocr_png(
     const uint8_t *bytes,
     size_t len,
@@ -196,20 +211,19 @@ bool luma_mac_ocr_png(
             return false;
         }
 
-        VNRecognizeTextRequest *request = [[VNRecognizeTextRequest alloc] initWithCompletionHandler:nil];
-        request.recognitionLevel = VNRequestTextRecognitionLevelAccurate;
-        request.usesLanguageCorrection = YES;
-        if (@available(macOS 13.0, *)) {
-            request.automaticallyDetectsLanguage = YES;
-        } else {
-            request.recognitionLanguages = @[
-                @"zh-Hans", @"zh-Hant", @"en-US", @"ja-JP", @"ko-KR", @"fr-FR", @"de-DE", @"es-ES"
-            ];
-        }
-
+        VNRecognizeTextRequest *request = create_vision_ocr_request(NO);
         NSError *vnErr = nil;
         VNImageRequestHandler *handler = [[VNImageRequestHandler alloc] initWithCGImage:cgImg options:@{}];
         BOOL ok = [handler performRequests:@[request] error:&vnErr];
+        if (!ok) {
+            // Virtualized or headless macOS runners without Metal/ANE require CPU fallback.
+            VNRecognizeTextRequest *cpuRequest = create_vision_ocr_request(YES);
+            vnErr = nil;
+            if ([handler performRequests:@[cpuRequest] error:&vnErr]) {
+                request = cpuRequest;
+                ok = YES;
+            }
+        }
         CGImageRelease(cgImg);
 
         if (!ok) {
