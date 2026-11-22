@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-pin-current"
+description = "Enables the overlay_pin_current command without any pre-configured scope."
+commands.allow = ["overlay_pin_current"]
+
+[[permission]]
+identifier = "deny-overlay-pin-current"
+description = "Denies the overlay_pin_current command without any pre-configured scope."
+commands.deny = ["overlay_pin_current"]

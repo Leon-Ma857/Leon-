@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>Luma 需要「录屏与系统录音」权限以冻结屏幕并进行区域截图、OCR 识字与翻译。</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Luma 需要控制权限以在划词翻译时读取当前选中的文本。</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+</dict>
+</plist>

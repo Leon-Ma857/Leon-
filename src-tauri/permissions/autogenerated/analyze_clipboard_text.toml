@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-analyze-clipboard-text"
+description = "Enables the analyze_clipboard_text command without any pre-configured scope."
+commands.allow = ["analyze_clipboard_text"]
+
+[[permission]]
+identifier = "deny-analyze-clipboard-text"
+description = "Denies the analyze_clipboard_text command without any pre-configured scope."
+commands.deny = ["analyze_clipboard_text"]

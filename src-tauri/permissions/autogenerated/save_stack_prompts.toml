@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-stack-prompts"
+description = "Enables the save_stack_prompts command without any pre-configured scope."
+commands.allow = ["save_stack_prompts"]
+
+[[permission]]
+identifier = "deny-save-stack-prompts"
+description = "Denies the save_stack_prompts command without any pre-configured scope."
+commands.deny = ["save_stack_prompts"]

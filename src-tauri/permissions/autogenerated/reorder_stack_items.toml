@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reorder-stack-items"
+description = "Enables the reorder_stack_items command without any pre-configured scope."
+commands.allow = ["reorder_stack_items"]
+
+[[permission]]
+identifier = "deny-reorder-stack-items"
+description = "Denies the reorder_stack_items command without any pre-configured scope."
+commands.deny = ["reorder_stack_items"]

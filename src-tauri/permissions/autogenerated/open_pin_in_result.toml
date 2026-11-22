@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-pin-in-result"
+description = "Enables the open_pin_in_result command without any pre-configured scope."
+commands.allow = ["open_pin_in_result"]
+
+[[permission]]
+identifier = "deny-open-pin-in-result"
+description = "Denies the open_pin_in_result command without any pre-configured scope."
+commands.deny = ["open_pin_in_result"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-config-json"
+description = "Enables the import_config_json command without any pre-configured scope."
+commands.allow = ["import_config_json"]
+
+[[permission]]
+identifier = "deny-import-config-json"
+description = "Denies the import_config_json command without any pre-configured scope."
+commands.deny = ["import_config_json"]

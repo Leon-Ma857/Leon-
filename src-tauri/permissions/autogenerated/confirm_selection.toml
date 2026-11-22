@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-confirm-selection"
+description = "Enables the confirm_selection command without any pre-configured scope."
+commands.allow = ["confirm_selection"]
+
+[[permission]]
+identifier = "deny-confirm-selection"
+description = "Denies the confirm_selection command without any pre-configured scope."
+commands.deny = ["confirm_selection"]

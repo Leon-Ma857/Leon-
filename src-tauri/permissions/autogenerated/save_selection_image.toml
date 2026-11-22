@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-selection-image"
+description = "Enables the save_selection_image command without any pre-configured scope."
+commands.allow = ["save_selection_image"]
+
+[[permission]]
+identifier = "deny-save-selection-image"
+description = "Denies the save_selection_image command without any pre-configured scope."
+commands.deny = ["save_selection_image"]

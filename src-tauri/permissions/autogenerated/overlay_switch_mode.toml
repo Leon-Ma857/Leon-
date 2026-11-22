@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-switch-mode"
+description = "Enables the overlay_switch_mode command without any pre-configured scope."
+commands.allow = ["overlay_switch_mode"]
+
+[[permission]]
+identifier = "deny-overlay-switch-mode"
+description = "Denies the overlay_switch_mode command without any pre-configured scope."
+commands.deny = ["overlay_switch_mode"]

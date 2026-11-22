@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stack-run-batch"
+description = "Enables the stack_run_batch command without any pre-configured scope."
+commands.allow = ["stack_run_batch"]
+
+[[permission]]
+identifier = "deny-stack-run-batch"
+description = "Denies the stack_run_batch command without any pre-configured scope."
+commands.deny = ["stack_run_batch"]

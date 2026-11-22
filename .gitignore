@@ -1,0 +1,31 @@
+# Dependencies & build artifacts
+node_modules/
+dist/
+dist-release/
+.claude/
+src-tauri/target/
+src-tauri/gen/
+
+# Generated icons (regenerated automatically by postinstall / pre-tauri hook)
+src-tauri/icons/*.png
+src-tauri/icons/*.ico
+src-tauri/icons/*.icns
+
+# Local scratch / unrelated workspace artifacts
+.scratch/
+.pytest_cache/
+data/
+outputs/
+flow.log
+strapmade-workbench-prototype.html
+scripts/colab_comfyui_minimax_h3.ipynb
+
+# Local environment / secrets
+.env
+.env.local
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

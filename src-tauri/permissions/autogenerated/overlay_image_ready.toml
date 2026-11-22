@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-image-ready"
+description = "Enables the overlay_image_ready command without any pre-configured scope."
+commands.allow = ["overlay_image_ready"]
+
+[[permission]]
+identifier = "deny-overlay-image-ready"
+description = "Denies the overlay_image_ready command without any pre-configured scope."
+commands.deny = ["overlay_image_ready"]

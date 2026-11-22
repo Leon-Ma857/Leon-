@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stack-ask-ai"
+description = "Enables the stack_ask_ai command without any pre-configured scope."
+commands.allow = ["stack_ask_ai"]
+
+[[permission]]
+identifier = "deny-stack-ask-ai"
+description = "Denies the stack_ask_ai command without any pre-configured scope."
+commands.deny = ["stack_ask_ai"]

@@ -1,0 +1,30 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay-commands",
+  "windows": [
+    "overlay"
+  ],
+  "permissions": [
+    "allow-get-current-capture",
+    "allow-get-capture-image",
+    "allow-capture-has-staged-items",
+    "allow-overlay-image-ready",
+    "allow-cancel-capture",
+    "allow-copy-selection-image",
+    "allow-save-selection-image",
+    "allow-submit-selection",
+    "allow-confirm-selection",
+    "allow-overlay-analyze-regions",
+    "allow-overlay-switch-mode",
+    "allow-overlay-ask-follow-up",
+    "allow-overlay-clear-analysis",
+    "allow-overlay-pin-current",
+    "allow-stage-regions",
+    "allow-finish-stack-handoff",
+    "allow-scan-qr-selection",
+    "allow-open-external-url",
+    "allow-start-scroll-capture",
+    "allow-get-ask-quick-actions",
+    "allow-save-ask-quick-actions"
+  ]
+}

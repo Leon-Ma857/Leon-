@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-stitched-stack"
+description = "Enables the save_stitched_stack command without any pre-configured scope."
+commands.allow = ["save_stitched_stack"]
+
+[[permission]]
+identifier = "deny-save-stitched-stack"
+description = "Denies the save_stitched_stack command without any pre-configured scope."
+commands.deny = ["save_stitched_stack"]

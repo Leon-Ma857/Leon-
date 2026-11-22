@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-uninstall-local-ocr"
+description = "Enables the uninstall_local_ocr command without any pre-configured scope."
+commands.allow = ["uninstall_local_ocr"]
+
+[[permission]]
+identifier = "deny-uninstall-local-ocr"
+description = "Denies the uninstall_local_ocr command without any pre-configured scope."
+commands.deny = ["uninstall_local_ocr"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-ask-follow-up"
+description = "Enables the overlay_ask_follow_up command without any pre-configured scope."
+commands.allow = ["overlay_ask_follow_up"]
+
+[[permission]]
+identifier = "deny-overlay-ask-follow-up"
+description = "Denies the overlay_ask_follow_up command without any pre-configured scope."
+commands.deny = ["overlay_ask_follow_up"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-copy-stitched-stack"
+description = "Enables the copy_stitched_stack command without any pre-configured scope."
+commands.allow = ["copy_stitched_stack"]
+
+[[permission]]
+identifier = "deny-copy-stitched-stack"
+description = "Denies the copy_stitched_stack command without any pre-configured scope."
+commands.deny = ["copy_stitched_stack"]

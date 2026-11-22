@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-translate-text-direct"
+description = "Enables the translate_text_direct command without any pre-configured scope."
+commands.allow = ["translate_text_direct"]
+
+[[permission]]
+identifier = "deny-translate-text-direct"
+description = "Denies the translate_text_direct command without any pre-configured scope."
+commands.deny = ["translate_text_direct"]

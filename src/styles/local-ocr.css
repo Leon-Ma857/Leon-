@@ -1,0 +1,237 @@
+.local-ocr-card .local-ocr-mode-row {
+  margin-bottom: 4px;
+}
+
+.local-ocr-status-box {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg-page);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.local-ocr-loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.local-ocr-uninstalled {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.local-ocr-uninstalled-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.local-ocr-uninstalled-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.local-ocr-busy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.local-ocr-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.local-ocr-progress-stage {
+  color: var(--text-main);
+  font-weight: 500;
+}
+
+.local-ocr-progress-metrics {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.local-ocr-progress-track {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+  position: relative;
+}
+
+.local-ocr-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.18s ease;
+}
+
+.local-ocr-progress-fill.indeterminate {
+  width: 42%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+
+.local-ocr-busy-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.local-ocr-installed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.local-ocr-installed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.local-ocr-installed-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.local-ocr-ready-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.local-ocr-disk-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.local-ocr-installed-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.local-ocr-danger-btn {
+  color: var(--danger);
+  border-color: rgba(220, 38, 38, 0.28);
+}
+
+.local-ocr-danger-btn:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.local-ocr-path {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.local-ocr-langs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.local-ocr-langs-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.local-ocr-lang-row {
+  margin-bottom: 0;
+}
+
+.local-ocr-lang-row .chip:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.local-ocr-test-result {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.local-ocr-error-box {
+  margin-top: 0;
+  font-size: 12px;
+  padding: 8px 11px;
+}
+
+.local-ocr-mirror-wrap {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.local-ocr-mirror-toggle {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  transition: color 0.15s ease;
+}
+
+.local-ocr-mirror-toggle:hover {
+  color: var(--text-main);
+}
+
+.local-ocr-mirror-field {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+:root[data-theme="dark"] .local-ocr-danger-btn {
+  border-color: rgba(248, 113, 113, 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .local-ocr-danger-btn,
+  :root:not([data-theme]) .local-ocr-danger-btn {
+    border-color: rgba(248, 113, 113, 0.32);
+  }
+}

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-copy-stack-item-image"
+description = "Enables the copy_stack_item_image command without any pre-configured scope."
+commands.allow = ["copy_stack_item_image"]
+
+[[permission]]
+identifier = "deny-copy-stack-item-image"
+description = "Denies the copy_stack_item_image command without any pre-configured scope."
+commands.deny = ["copy_stack_item_image"]

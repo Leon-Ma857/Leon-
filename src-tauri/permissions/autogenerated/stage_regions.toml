@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stage-regions"
+description = "Enables the stage_regions command without any pre-configured scope."
+commands.allow = ["stage_regions"]
+
+[[permission]]
+identifier = "deny-stage-regions"
+description = "Denies the stage_regions command without any pre-configured scope."
+commands.deny = ["stage_regions"]

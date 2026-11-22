@@ -1,0 +1,29 @@
+{
+  "name": "snaptrans",
+  "private": true,
+  "version": "0.8.0",
+  "description": "Quick WeChat-style screenshot translation desktop app powered by Tauri v2 and multimodal LLMs",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "setup-icons": "node scripts/setup-icons.mjs",
+    "postinstall": "node scripts/setup-icons.mjs",
+    "tauri": "node scripts/setup-icons.mjs && tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.2.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.2.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.3"
+  }
+}

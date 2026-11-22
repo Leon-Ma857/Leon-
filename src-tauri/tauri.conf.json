@@ -1,0 +1,102 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Luma",
+  "version": "0.8.0",
+  "identifier": "com.snaptrans.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Luma - 快捷截图翻译",
+        "url": "index.html",
+        "width": 820,
+        "height": 640,
+        "minWidth": 680,
+        "minHeight": 520,
+        "center": true,
+        "resizable": true,
+        "visible": false
+      },
+      {
+        "label": "overlay",
+        "title": "Luma Capture",
+        "url": "index.html?view=overlay",
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "visible": false
+      },
+      {
+        "label": "result",
+        "title": "Luma Result",
+        "url": "index.html?view=result",
+        "width": 456,
+        "height": 210,
+        "minWidth": 160,
+        "minHeight": 100,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": false,
+        "skipTaskbar": true,
+        "resizable": true,
+        "shadow": false,
+        "visible": false
+      },
+      {
+        "label": "stack",
+        "title": "Luma Stack",
+        "url": "index.html?view=stack",
+        "width": 820,
+        "height": 560,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdCNzU2MDZFN0QxQ0VGOUQKUldTZDd4eDlibUIxZThsRWdhNlgzS0hOTTU0cUVOeVNzNUhwWVlLdi9XYk8xSEZLdm5KNlJndlQK",
+      "requireSignedVersion": true,
+      "windows": { "installMode": "passive" }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    },
+    "windows": {
+      "allowDowngrades": false,
+      "webviewInstallMode": { "type": "embedBootstrapper", "silent": true },
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.icns",
+      "icons/icon.png"
+    ]
+  }
+}

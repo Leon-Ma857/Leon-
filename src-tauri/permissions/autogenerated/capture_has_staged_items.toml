@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-capture-has-staged-items"
+description = "Enables the capture_has_staged_items command without any pre-configured scope."
+commands.allow = ["capture_has_staged_items"]
+
+[[permission]]
+identifier = "deny-capture-has-staged-items"
+description = "Denies the capture_has_staged_items command without any pre-configured scope."
+commands.deny = ["capture_has_staged_items"]

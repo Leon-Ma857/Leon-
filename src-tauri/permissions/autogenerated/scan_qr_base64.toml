@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scan-qr-base64"
+description = "Enables the scan_qr_base64 command without any pre-configured scope."
+commands.allow = ["scan_qr_base64"]
+
+[[permission]]
+identifier = "deny-scan-qr-base64"
+description = "Denies the scan_qr_base64 command without any pre-configured scope."
+commands.deny = ["scan_qr_base64"]

@@ -1,11 +1,12 @@
 # Luma
 
-轻量级 Windows 桌面快捷截图、原位翻译、OCR 识字、桌面贴图与 AI 视觉效率工具，基于 **Tauri v2 + Rust + React + TypeScript** 构建。
+轻量级跨平台桌面（Windows / macOS）快捷截图、原位翻译、OCR 识字、桌面贴图与 AI 视觉效率工具，基于 **Tauri v2 + Rust + React + TypeScript** 构建。
 
-按下全局快捷键即可冻结当前屏幕并框选区域，一步完成识字、翻译、原位覆盖预览、看图问答、拼图或置顶贴图；支持 **AI 实时流式输出（SSE）**、**自定义网络代理与更新源** 以及 **应用内带实时进度条的签名在线更新**，常驻系统托盘，随叫随到。
+按下全局快捷键即可冻结当前屏幕并框选区域，一步完成识字、翻译、原位覆盖预览、看图问答、拼图或置顶贴图；支持 **AI 实时流式输出（SSE）**、**自定义网络代理与更新源** 以及 **应用内更新**，常驻系统托盘 / 菜单栏，随叫随到。
 
 [![Latest Release](https://img.shields.io/github/v/release/Leon-Ma857/Leon-?label=最新版本&color=2b8a78)](https://github.com/Leon-Ma857/Leon-/releases/latest)
 [![Platform](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078D6)](#安装windows-1011-x64)
+[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%2012%2B-111827)](#安装macos-apple-silicon)
 
 ## 核心特性
 
@@ -15,7 +16,7 @@
 - **AI 全链路实时流式输出（SSE）**：文本翻译台、结果浮窗（翻译 / OCR / 问 AI）、截图选区侧栏与悬浮叠堆批量处理均支持逐字实时渲染，首字响应更快；对不支持流式的接口自动兼容回退。
 - **多引擎自由切换**：
   - **视觉 AI（推荐）**：一步看图识字并自然意译，内置 OpenAI、通义千问（Qwen-VL）、硅基流动、智谱（GLM-4V）、Google Gemini、本地 Ollama 等 OpenAI 兼容接口预设。
-  - **Google 翻译 / DeepL**：本地 Windows OCR 提取文字后调用翻译引擎。
+  - **Google 翻译 / DeepL**：本地 OCR（Windows 使用 RapidOCR / Windows OCR，macOS 使用 Apple Vision OCR）提取文字后调用翻译引擎。
 - **自定义术语表与提示词**：支持配置专有名词对照表（Glossary）与多组提示词预设，统一专业词汇译法。
 
 ### 2. 截图标注、长截图与取色工具
@@ -42,6 +43,33 @@
 ## 安装（Windows 10/11 x64）
 
 下载发行页中的 `Luma_<版本>_x64-setup.exe`，运行安装程序，然后从开始菜单搜索 **Luma**。安装程序会把 `WebView2Loader.dll` 放到程序旁边。电脑缺少 Microsoft Edge WebView2 Runtime 时，安装程序会联网下载安装。
+
+## 安装（macOS Apple Silicon）
+
+支持 **macOS 12+（Apple Silicon M 系列 / arm64）**：
+
+1. 从 [GitHub Releases](https://github.com/Leon-Ma857/Leon-/releases/latest) 下载 `Luma_<版本>_aarch64.dmg`，打开并将 `Luma.app` 拖入「应用程序（Applications）」文件夹。
+2. **首次打开解除 Gatekeeper 隔离提示**：由于当前 macOS 安装包暂未进行 Apple Developer 公证签名，如系统提示“已损坏，无法打开”或“无法验证开发者”，请在终端运行以下命令后重新打开：
+
+```bash
+xattr -cr /Applications/Luma.app
+```
+
+3. **授予定位与划词所需系统权限**（`系统设置 → 隐私与安全性`）：
+   - **录屏与系统录音**：用于区域截图、滚动长截图与像素取色。
+   - **辅助功能**：用于全局划词翻译（包括单键 `Space` / `Tab` 触发与非破坏性读取选区文字）及滚动长截图。
+
+---
+
+## 从源码构建（macOS Apple Silicon）
+
+1. 安装 **Xcode Command Line Tools**（`xcode-select --install`）、**Node.js v20+** 与 **Rust 工具链**（`rustup target add aarch64-apple-darwin`）。
+2. 安装前端依赖并生成 `.icns` 等图标资源后构建 `.dmg`：
+
+```bash
+npm ci
+npm run tauri -- build --target aarch64-apple-darwin --bundles dmg
+```
 
 ---
 

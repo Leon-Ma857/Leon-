@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "result-commands",
+  "windows": [
+    "result"
+  ],
+  "permissions": [
+    "allow-switch-result-mode",
+    "allow-ask-ai-follow-up",
+    "allow-copy-last-crop-image",
+    "allow-save-last-crop-image",
+    "allow-retry-translation",
+    "allow-retranslate-custom-text",
+    "allow-get-latest-result-state",
+    "allow-hide-result-window",
+    "allow-resize-result-window",
+    "allow-get-ask-quick-actions",
+    "allow-save-ask-quick-actions"
+  ]
+}

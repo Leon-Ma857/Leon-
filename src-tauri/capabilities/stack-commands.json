@@ -1,0 +1,34 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "stack-commands",
+  "windows": [
+    "stack"
+  ],
+  "permissions": [
+    "allow-start-capture",
+    "allow-stack-frame-ready",
+    "allow-get-stack-state",
+    "allow-remove-stack-item",
+    "allow-reorder-stack-items",
+    "allow-clear-stack",
+    "allow-pin-stack-item",
+    "allow-get-stack-item-image",
+    "allow-update-stack-item-image",
+    "allow-copy-stack-item-image",
+    "allow-save-stack-item-image",
+    "allow-copy-stitched-stack",
+    "allow-save-stitched-stack",
+    "allow-copy-stack-as-files",
+    "allow-stack-ask-ai",
+    "allow-stack-run-batch",
+    "allow-stack-clear-chat",
+    "allow-resize-stack-window",
+    "allow-scan-qr-base64",
+    "allow-open-external-url",
+    "allow-save-markdown-note",
+    "allow-get-stack-prompts",
+    "allow-save-stack-prompts",
+    "allow-get-ask-quick-actions",
+    "allow-save-ask-quick-actions"
+  ]
+}
