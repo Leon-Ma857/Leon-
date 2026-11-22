@@ -744,6 +744,13 @@ static void ensure_popover_monitors_on_main(void) {
     }
 }
 
+void luma_mac_popover_deactivate(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        g_popover_active = NO;
+        g_popover_source_pid = 0;
+    });
+}
+
 void luma_mac_popover_activate(
     void *ns_window,
     int32_t source_pid,
@@ -761,13 +768,6 @@ void luma_mac_popover_activate(
         g_popover_dismiss_cb = on_dismiss;
         g_popover_activated_ms = monotonic_ms();
         g_popover_active = YES;
-    });
-}
-
-void luma_mac_popover_deactivate(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        g_popover_active = NO;
-        g_popover_source_pid = 0;
     });
 }
 
