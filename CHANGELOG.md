@@ -7,7 +7,7 @@
   - **macOS 原生交互与悬浮窗桥接**：实现基于 `CGEventTap` 的智能单键（`Space`/`Tab`）与全局划词读取、`NSPasteboard` 多格式无损备份/瞬时恢复、结果浮窗「跟随来源应用层级 + 点空白自动关闭」、全屏选区置顶越过菜单栏、`NSScreen` Retina 物理坐标归一化、多文件剪贴板导出（`NSWorkspace`/Pasteboard URLs）、滚动长截图与 Dock 图标点击恢复主窗口。
   - **macOS 系统代理与开机自启**：实时解析 `scutil --proxy`（支持 HTTP/HTTPS/SOCKS 及 `ExceptionsList` 豁免规则），支持写入/移除 `~/Library/LaunchAgents/com.snaptrans.app.plist` 登录自启。
   - **跨平台界面与快捷键文案自适应**：前端设置页、OCR 引擎卡片、更新提示弹窗及快捷键标识在 macOS 自动切换为 `⌘` / `Option` 与 Apple Vision 描述。
-- **双平台开源工程化与 CI 发布流程**：新增 `.github/workflows/release.yml`，自动验证 Windows x64 构建与单元测试，并在 `macos-14` runner 编译、测试并发布 Apple Silicon `.dmg` 安装包。
+- **双平台开源工程化与 CI 发布流程**：新增 `.github/workflows/release.yml`，自动验证 Windows x64 构建与单元测试，并在 `macos-15` runner 编译、测试并发布 Apple Silicon `.dmg` 安装包。
 
 ## v0.7.27 (2026-11-22)
 
