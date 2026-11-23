@@ -186,10 +186,61 @@ pub(crate) fn is_own_injected_key(hook_flags: u32, extra_info: usize) -> bool {
     (hook_flags & LLKHF_INJECTED) != 0 && extra_info == LUMA_INJECTED_INPUT_MARKER
 }
 
-const DRAG_THRESHOLD_SQ: i64 = 36; // 6px minimum drag distance
+#[cfg(any(windows, test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RectI32 {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+/// Returns `true` when the active foreground context looks like a game, exclusive/borderless
+/// fullscreen media window, hidden-cursor 3D app, or Windows shell desktop where single-key
+/// selection hooks must stay passive.
+#[cfg(any(windows, test))]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn should_suppress_smart_selection(
+    user_notification_busy: bool,
+    cursor_hidden: bool,
+    is_shell_desktop_window: bool,
+    win_rect: Option<RectI32>,
+    monitor_rect: Option<RectI32>,
+    work_rect: Option<RectI32>,
+    has_caption: bool,
+    is_zoomed: bool,
+) -> bool {
+    if user_notification_busy || cursor_hidden || is_shell_desktop_window {
+        return true;
+    }
+
+    if let (Some(win), Some(mon)) = (win_rect, monitor_rect) {
+        if mon.right > mon.left && mon.bottom > mon.top {
+            let covers_monitor = win.left <= mon.left
+                && win.top <= mon.top
+                && win.right >= mon.right
+                && win.bottom >= mon.bottom;
+            if covers_monitor {
+                let taskbar_visible = work_rect.is_some_and(|w| {
+                    (w.left - mon.left) >= 16
+                        || (w.top - mon.top) >= 16
+                        || (mon.right - w.right) >= 16
+                        || (mon.bottom - w.bottom) >= 16
+                });
+                if taskbar_visible || !(is_zoomed && has_caption) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+const DRAG_THRESHOLD_SQ: i64 = 100; // 10px minimum drag distance
 const DOUBLE_CLICK_MS: u64 = 500;
 const DOUBLE_CLICK_DIST_SQ: i64 = 64; // 8px max jitter between clicks
-const ARM_TTL_MS: u64 = 8000;
+const ARM_TTL_MS: u64 = 4000;
 
 impl SmartSelectionTracker {
     pub fn on_lbutton_down(&mut self, x: i32, y: i32, now_ms: u64) {
@@ -197,6 +248,7 @@ impl SmartSelectionTracker {
         self.mouse_down = Some((x, y, now_ms));
     }
 
+    #[allow(dead_code)]
     pub fn on_lbutton_up(
         &mut self,
         x: i32,
@@ -204,6 +256,18 @@ impl SmartSelectionTracker {
         now_ms: u64,
         fg_hwnd: isize,
         is_self_window: bool,
+    ) {
+        self.on_lbutton_up_with_guard(x, y, now_ms, fg_hwnd, is_self_window, || false);
+    }
+
+    pub fn on_lbutton_up_with_guard(
+        &mut self,
+        x: i32,
+        y: i32,
+        now_ms: u64,
+        fg_hwnd: isize,
+        is_self_window: bool,
+        is_suppressed: impl FnOnce() -> bool,
     ) {
         let down = self.mouse_down.take();
         if is_self_window || fg_hwnd == 0 {
@@ -240,6 +304,10 @@ impl SmartSelectionTracker {
                     });
                 }
             }
+        }
+
+        if armed_rect.is_some() && is_suppressed() {
+            armed_rect = None;
         }
 
         self.pending = armed_rect.map(|rect| PendingSelection {
@@ -287,17 +355,22 @@ impl SmartSelectionTracker {
 #[cfg(windows)]
 mod imp {
     use super::{
-        is_copyable_hglobal_format, SelectionAnchorRect, SelectionCaptureResult, SmartSelectionKey,
-        SmartSelectionTracker, WorkAreaRect,
+        is_copyable_hglobal_format, should_suppress_smart_selection, RectI32,
+        SelectionAnchorRect, SelectionCaptureResult, SmartSelectionKey, SmartSelectionTracker,
+        WorkAreaRect,
     };
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::sync::{mpsc, Arc, Mutex, OnceLock};
     use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
     use windows::core::w;
-    use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL, LPARAM, LRESULT, POINT, WPARAM};
+    use windows::Win32::Foundation::{
+        GlobalFree, HANDLE, HGLOBAL, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
+    };
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
     use windows::Win32::Graphics::Gdi::{
-        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO,
+        MONITOR_DEFAULTTONEAREST,
     };
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData,
@@ -313,12 +386,17 @@ mod imp {
         VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_NONAME, VK_RCONTROL, VK_RMENU, VK_RSHIFT,
         VK_RWIN, VK_SHIFT, VK_SPACE, VK_TAB,
     };
+    use windows::Win32::UI::Shell::{
+        SHQueryUserNotificationState, QUNS_BUSY, QUNS_NOT_PRESENT, QUNS_PRESENTATION_MODE,
+        QUNS_RUNNING_D3D_FULL_SCREEN,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, DispatchMessageW, GetCursorPos, GetForegroundWindow, GetMessageW,
-        GetWindowThreadProcessId, PostThreadMessageW, SetWindowsHookExW, TranslateMessage,
-        UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL,
-        WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_QUIT, WM_RBUTTONDOWN,
-        WM_SYSKEYDOWN,
+        CallNextHookEx, DispatchMessageW, GetClassNameW, GetCursorInfo, GetCursorPos,
+        GetForegroundWindow, GetMessageW, GetWindowLongW, GetWindowRect, GetWindowThreadProcessId,
+        IsZoomed, PostThreadMessageW, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx,
+        CURSORINFO, CURSOR_SHOWING, GWL_STYLE, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT,
+        WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+        WM_QUIT, WM_RBUTTONDOWN, WM_SYSKEYDOWN, WS_CAPTION,
     };
 
     pub(super) const CF_UNICODETEXT: u32 = 13;
@@ -754,6 +832,100 @@ mod imp {
         )
     }
 
+    fn rect_i32(r: RECT) -> RectI32 {
+        RectI32 {
+            left: r.left,
+            top: r.top,
+            right: r.right,
+            bottom: r.bottom,
+        }
+    }
+
+    fn is_smart_selection_suppressed_for_hwnd(fg_hwnd: isize) -> bool {
+        if let Ok(quns) = unsafe { SHQueryUserNotificationState() } {
+            if matches!(
+                quns,
+                QUNS_NOT_PRESENT
+                    | QUNS_BUSY
+                    | QUNS_RUNNING_D3D_FULL_SCREEN
+                    | QUNS_PRESENTATION_MODE
+            ) {
+                return true;
+            }
+        }
+
+        let mut ci = CURSORINFO {
+            cbSize: std::mem::size_of::<CURSORINFO>() as u32,
+            ..Default::default()
+        };
+        if unsafe { GetCursorInfo(&mut ci) }.is_ok() && (ci.flags.0 & CURSOR_SHOWING.0) == 0 {
+            return true;
+        }
+
+        if fg_hwnd == 0 {
+            return true;
+        }
+        let hwnd = HWND(fg_hwnd as *mut core::ffi::c_void);
+
+        let mut cls_buf = [0u16; 128];
+        let cls_len = unsafe { GetClassNameW(hwnd, &mut cls_buf) };
+        if cls_len > 0 {
+            let cls = String::from_utf16_lossy(&cls_buf[..cls_len as usize]);
+            if matches!(cls.as_str(), "Progman" | "WorkerW") {
+                return true;
+            }
+        }
+
+        let mut dwm_rect = RECT::default();
+        let win_rect = if unsafe {
+            DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                (&mut dwm_rect as *mut RECT).cast(),
+                std::mem::size_of::<RECT>() as u32,
+            )
+        }
+        .is_ok()
+        {
+            Some(rect_i32(dwm_rect))
+        } else {
+            let mut raw_rect = RECT::default();
+            unsafe { GetWindowRect(hwnd, &mut raw_rect) }
+                .ok()
+                .map(|()| rect_i32(raw_rect))
+        };
+
+        let hmon = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+        let (monitor_rect, work_rect) = if !hmon.0.is_null() {
+            let mut mi = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            if unsafe { GetMonitorInfoW(hmon, &mut mi) }.as_bool() {
+                (Some(rect_i32(mi.rcMonitor)), Some(rect_i32(mi.rcWork)))
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        };
+
+        let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) } as u32;
+        let has_caption = (style & WS_CAPTION.0) == WS_CAPTION.0;
+        let is_zoomed = unsafe { IsZoomed(hwnd) }.as_bool();
+
+        should_suppress_smart_selection(
+            false,
+            false,
+            false,
+            win_rect,
+            monitor_rect,
+            work_rect,
+            has_caption,
+            is_zoomed,
+        )
+    }
+
     unsafe extern "system" fn mouse_hook_proc(
         code: i32,
         wparam: WPARAM,
@@ -775,12 +947,13 @@ mod imp {
                     } else if msg == WM_LBUTTONUP {
                         let (fg_hwnd, is_self) = foreground_info(shared.self_pid);
                         if let Ok(mut tracker) = shared.tracker.try_lock() {
-                            tracker.on_lbutton_up(
+                            tracker.on_lbutton_up_with_guard(
                                 info.pt.x,
                                 info.pt.y,
                                 now_ms_from(shared),
                                 fg_hwnd,
                                 is_self,
+                                || is_smart_selection_suppressed_for_hwnd(fg_hwnd),
                             );
                         }
                     } else if let Ok(mut tracker) = shared.tracker.try_lock() {
@@ -830,12 +1003,14 @@ mod imp {
                         None
                     };
                     if let Some(rect) = triggered {
-                        if let Ok(guard) = shared.trigger_tx.try_lock() {
-                            if let Some(ref tx) = *guard {
-                                let _ = tx.try_send(rect);
+                        if !is_smart_selection_suppressed_for_hwnd(fg_hwnd) {
+                            if let Ok(guard) = shared.trigger_tx.try_lock() {
+                                if let Some(ref tx) = *guard {
+                                    let _ = tx.try_send(rect);
+                                }
                             }
+                            return LRESULT(1);
                         }
-                        return LRESULT(1);
                     }
                 }
             }
@@ -1185,11 +1360,19 @@ mod tests {
             None
         );
 
-        // Simple click without drag does not arm.
+        // Simple click or tiny 8px slip (< 10px threshold) does not arm.
         tracker.on_lbutton_down(300, 300, 200);
-        tracker.on_lbutton_up(302, 301, 240, 1001, false);
+        tracker.on_lbutton_up(308, 300, 240, 1001, false);
         assert_eq!(
             tracker.on_key_down(VK_SP, VK_SP, false, false, 280, 1001, false),
+            None
+        );
+
+        // Guarded suppression prevents arming even after a valid drag.
+        tracker.on_lbutton_down(120, 200, 500);
+        tracker.on_lbutton_up_with_guard(280, 220, 620, 1001, false, || true);
+        assert_eq!(
+            tracker.on_key_down(VK_SP, VK_SP, false, false, 700, 1001, false),
             None
         );
 
@@ -1217,13 +1400,129 @@ mod tests {
             None
         );
 
-        // Expired selection (> 8000ms) does not trigger.
+        // Expired selection (> 4000ms) does not trigger.
         tracker.on_lbutton_down(100, 100, 4000);
         tracker.on_lbutton_up(220, 110, 4100, 1001, false);
         assert_eq!(
-            tracker.on_key_down(VK_SP, VK_SP, false, false, 12500, 1001, false),
+            tracker.on_key_down(VK_SP, VK_SP, false, false, 8200, 1001, false),
             None
         );
+    }
+
+    #[test]
+    fn suppresses_smart_selection_in_games_and_fullscreen_only() {
+        use super::{should_suppress_smart_selection, RectI32};
+
+        let mon = RectI32 {
+            left: 0,
+            top: 0,
+            right: 2560,
+            bottom: 1440,
+        };
+        let work_with_taskbar = RectI32 {
+            left: 0,
+            top: 0,
+            right: 2560,
+            bottom: 1382,
+        };
+        let windowed = RectI32 {
+            left: 160,
+            top: 90,
+            right: 1800,
+            bottom: 1100,
+        };
+
+        // Direct game / fullscreen / desktop indicators suppress immediately.
+        assert!(should_suppress_smart_selection(
+            true,
+            false,
+            false,
+            Some(windowed),
+            Some(mon),
+            Some(work_with_taskbar),
+            true,
+            false,
+        ));
+        assert!(should_suppress_smart_selection(
+            false,
+            true,
+            false,
+            Some(windowed),
+            Some(mon),
+            Some(work_with_taskbar),
+            true,
+            false,
+        ));
+        assert!(should_suppress_smart_selection(
+            false,
+            false,
+            true,
+            Some(mon),
+            Some(mon),
+            Some(work_with_taskbar),
+            false,
+            false,
+        ));
+
+        // Borderless fullscreen game over visible taskbar.
+        assert!(should_suppress_smart_selection(
+            false,
+            false,
+            false,
+            Some(mon),
+            Some(mon),
+            Some(work_with_taskbar),
+            false,
+            false,
+        ));
+
+        // Borderless fullscreen game even with auto-hide taskbar (work == mon).
+        assert!(should_suppress_smart_selection(
+            false,
+            false,
+            false,
+            Some(mon),
+            Some(mon),
+            Some(mon),
+            false,
+            false,
+        ));
+
+        // Maximized browser / editor with visible taskbar does NOT suppress.
+        assert!(!should_suppress_smart_selection(
+            false,
+            false,
+            false,
+            Some(work_with_taskbar),
+            Some(mon),
+            Some(work_with_taskbar),
+            true,
+            true,
+        ));
+
+        // Maximized browser / editor with auto-hide taskbar does NOT suppress.
+        assert!(!should_suppress_smart_selection(
+            false,
+            false,
+            false,
+            Some(mon),
+            Some(mon),
+            Some(mon),
+            true,
+            true,
+        ));
+
+        // Normal windowed app does NOT suppress.
+        assert!(!should_suppress_smart_selection(
+            false,
+            false,
+            false,
+            Some(windowed),
+            Some(mon),
+            Some(work_with_taskbar),
+            true,
+            false,
+        ));
     }
 
     #[cfg(windows)]

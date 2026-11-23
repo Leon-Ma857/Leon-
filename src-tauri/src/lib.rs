@@ -1606,8 +1606,7 @@ fn register_shortcuts_on_ui(
                 std::thread::spawn(move || {
                     if let Err(err) = present_selected_text_in_result_with_rect(&app_spawn, Some(rect))
                     {
-                        eprintln!("[Luma] 智能单键划词翻译失败: {err}");
-                        report_capture_error(&app_spawn, err);
+                        eprintln!("[Luma] 智能单键划词未触发: {err}");
                     }
                 });
             });

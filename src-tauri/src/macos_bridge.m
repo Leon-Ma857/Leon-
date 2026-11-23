@@ -455,6 +455,10 @@ static CGEventRef smart_tap_callback(
         bool isSelf = false;
         current_frontmost_app(&fgPid, &isSelf);
 
+        if (CGDisplayIsCaptured(CGMainDisplayID())) {
+            return event;
+        }
+
         if (type == kCGEventLeftMouseDown || type == kCGEventLeftMouseUp ||
             type == kCGEventRightMouseDown || type == kCGEventOtherMouseDown) {
             LumaMacMouseCallback mcb = g_mouse_cb;

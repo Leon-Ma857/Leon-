@@ -85,7 +85,7 @@ export function SelectionShortcutField({
         </div>
         {isSmartSingleKey && (
           <small className="selection-smart-hint">
-            智能单键：鼠标划选或双击选中文字后轻按 {normalized === "Space" || normalized.toLowerCase() === "space" ? "Space（空格）" : "Tab"} 即可触发翻译；平时正常打字、切焦点与表单切换完全不受影响。
+            智能单键：鼠标划选或双击选中文字后轻按 {normalized === "Space" || normalized.toLowerCase() === "space" ? "Space（空格）" : "Tab"} 即可触发翻译；平时正常打字、切焦点与全屏游戏/视频均自动避让不受影响。
           </small>
         )}
       </div>
