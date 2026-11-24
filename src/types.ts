@@ -20,17 +20,17 @@ export interface AskQuickAction {
 export const DEFAULT_ASK_QUICK_ACTIONS: AskQuickAction[] = [
   {
     id: "md-table",
-    label: "转 Markdown 表格",
+    label: "转表格",
     prompt: "请将内容中的表格或结构化数据精准提取并转换为规范的 Markdown 表格，保留完整表头、数字与对齐关系。",
   },
   {
     id: "latex-formula",
-    label: "提取 LaTeX 公式",
+    label: "提取公式",
     prompt: "请精准识别并提取内容中的数学公式，输出可直接复制使用的 LaTeX 代码（行内用 $...$，独立公式用 $$...$$），并简要核对符号。",
   },
   {
     id: "explain-error",
-    label: "解释这段报错",
+    label: "解释报错",
     prompt: "请分析这段报错信息或代码异常：说明根本原因、关键上下文线索，并给出具体可执行的排查与修复步骤。",
   },
   {
@@ -40,7 +40,7 @@ export const DEFAULT_ASK_QUICK_ACTIONS: AskQuickAction[] = [
   },
   {
     id: "explain-code",
-    label: "解释代码逻辑",
+    label: "解释代码",
     prompt: "请清晰解释这段代码的核心逻辑、输入输出与关键步骤，如有明显潜在 Bug 或边界问题一并指出。",
   },
   {
@@ -379,7 +379,7 @@ export const TARGET_LANGUAGES = [
 export const SHORTCUT_PRESETS = ["Alt+Q", "Ctrl+Shift+A", "Ctrl+Alt+T", "F4"];
 
 export const ENGINE_OPTIONS: { id: TranslateEngine; label: string; desc: string }[] = [
-  { id: "ai", label: "视觉 AI", desc: "一步看图识字并自然意译" },
-  { id: "google", label: "Google 翻译", desc: "OCR 提字 + Google 翻译" },
-  { id: "deepl", label: "DeepL", desc: "OCR 提字 + DeepL 精准翻译" },
+  { id: "ai", label: "视觉 AI", desc: "直接看图翻译与问答" },
+  { id: "google", label: "Google", desc: "本地识字 + Google 翻译" },
+  { id: "deepl", label: "DeepL", desc: "本地识字 + DeepL 翻译" },
 ];

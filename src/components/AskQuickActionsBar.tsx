@@ -169,18 +169,18 @@ export function AskQuickActionsBar({
   const handleAddAction = async () => {
     if (saving) return;
     if (actions.length >= MAX_ASK_ACTIONS) {
-      showFeedback("err", `最多支持 ${MAX_ASK_ACTIONS} 个快捷动作，请先删除不需要的预设`);
+      showFeedback("err", `最多 ${MAX_ASK_ACTIONS} 个快捷指令，请先删除旧项`);
       return;
     }
     const label = truncateChars(newLabel.trim(), MAX_LABEL_LENGTH);
     const prompt = truncateChars(newPrompt.trim(), MAX_PROMPT_LENGTH);
     if (!label) {
-      showFeedback("err", "请输入快捷动作简称");
+      showFeedback("err", "请输入名称");
       labelInputRef.current?.focus();
       return;
     }
     if (!prompt) {
-      showFeedback("err", "请输入完整提示词");
+      showFeedback("err", "请输入提示词");
       promptInputRef.current?.focus();
       return;
     }
@@ -193,7 +193,7 @@ export function AskQuickActionsBar({
         prompt,
       },
     ];
-    const ok = await persistActions(next, "已添加快捷动作");
+    const ok = await persistActions(next, "已添加");
     if (ok) {
       setNewLabel("");
       setNewPrompt("");
@@ -215,7 +215,7 @@ export function AskQuickActionsBar({
   const handleResetDefaults = async () => {
     if (saving) return;
     const defaults = DEFAULT_ASK_QUICK_ACTIONS.map((item) => ({ ...item }));
-    await persistActions(defaults, "已恢复默认预设");
+    await persistActions(defaults, "已恢复默认");
   };
 
   const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -237,18 +237,18 @@ export function AskQuickActionsBar({
         <div
           className="ask-actions-editor"
           role="dialog"
-          aria-label="自定义问 AI 快捷动作"
+          aria-label="自定义快捷指令"
         >
           <div className="ask-editor-head">
             <span className="ask-editor-title">
-              自定义快捷动作 ({actions.length}/{MAX_ASK_ACTIONS})
+              快捷指令 ({actions.length}/{MAX_ASK_ACTIONS})
             </span>
             <button
               type="button"
               className="ask-editor-btn"
               onClick={() => void handleResetDefaults()}
               disabled={saving}
-              title="恢复内置默认快捷动作"
+              title="恢复默认"
             >
               <RotateCcw size={11} />
               恢复默认
@@ -269,16 +269,16 @@ export function AskQuickActionsBar({
                   if (feedback?.kind === "err") setFeedback(null);
                 }}
                 onKeyDown={handleInputKeyDown}
-                placeholder="简称，如：转 CSV"
+                placeholder="名称，如：转 CSV"
               />
               <button
                 type="button"
                 className="ask-editor-btn ask-editor-btn-primary"
                 onClick={() => void handleAddAction()}
                 disabled={saving || isFull}
-                title={isFull ? `最多支持 ${MAX_ASK_ACTIONS} 个快捷动作` : "保存新快捷动作"}
+                title={isFull ? `最多 ${MAX_ASK_ACTIONS} 个` : "保存"}
               >
-                {saving ? "保存中..." : "保存"}
+                {saving ? "保存中…" : "保存"}
               </button>
             </div>
             <input
@@ -293,7 +293,7 @@ export function AskQuickActionsBar({
                 if (feedback?.kind === "err") setFeedback(null);
               }}
               onKeyDown={handleInputKeyDown}
-              placeholder="完整提示词..."
+              placeholder="提示词…"
             />
           </div>
 
@@ -305,13 +305,13 @@ export function AskQuickActionsBar({
 
           {!feedback && isFull && (
             <div className="ask-editor-feedback err" role="status">
-              已达上限 {MAX_ASK_ACTIONS}/{MAX_ASK_ACTIONS}，删除下方条目后可继续添加
+              已达上限 ({MAX_ASK_ACTIONS})，删除旧项后可继续添加
             </div>
           )}
 
           <div className="ask-editor-list">
             {actions.length === 0 ? (
-              <div className="ask-editor-empty">暂无快捷动作，可上方新增或点击「恢复默认」</div>
+              <div className="ask-editor-empty">暂无快捷指令</div>
             ) : (
               actions.map((action) => (
                 <div key={action.id} className="ask-editor-item">
@@ -348,7 +348,7 @@ export function AskQuickActionsBar({
               className="ask-actions-empty-hint"
               onClick={() => setEditorOpen(true)}
             >
-              暂无快捷动作，点击右侧 + 添加
+              点击 + 添加快捷指令
             </button>
           ) : (
             actions.map((action) => (
@@ -371,8 +371,8 @@ export function AskQuickActionsBar({
         <button
           type="button"
           className={`ask-action-add-btn${editorOpen ? " active" : ""}`}
-          title="自定义快捷动作"
-          aria-label="自定义快捷动作"
+          title="自定义快捷指令"
+          aria-label="自定义快捷指令"
           aria-expanded={editorOpen}
           onClick={() => {
             clearFeedbackTimer();

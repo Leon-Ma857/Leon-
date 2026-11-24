@@ -217,7 +217,7 @@ export function PinWindow() {
           type="button"
           className="pin-close-corner"
           onClick={handleClose}
-          title="关闭贴图（也可双击、右键或按 Esc）"
+          title="关闭 (Esc / 右键 / 双击)"
           aria-label="关闭贴图"
         >
           <X size={13} />
@@ -227,7 +227,7 @@ export function PinWindow() {
             type="button"
             className="hud-icon-btn"
             onClick={() => handleOpenResult("translate")}
-            title="翻译此贴图"
+            title="翻译"
           >
             <Languages size={13} />
             <span className="pin-btn-label">翻译</span>
@@ -236,7 +236,7 @@ export function PinWindow() {
             type="button"
             className="hud-icon-btn"
             onClick={() => handleOpenResult("ocr")}
-            title="识别文字"
+            title="识字"
           >
             <ScanText size={13} />
             <span className="pin-btn-label">识字</span>
@@ -271,7 +271,7 @@ export function PinWindow() {
             type="button"
             className="hud-icon-btn"
             onClick={handleRotate}
-            title="顺时针旋转 90°"
+            title="旋转 90°"
           >
             <RotateCw size={13} />
           </button>
@@ -281,7 +281,7 @@ export function PinWindow() {
                 type="button"
                 className={`hud-icon-btn ${flippedX ? "active" : ""}`}
                 onClick={() => setFlippedX((f) => !f)}
-                title="水平镜像翻转"
+                title="水平翻转"
               >
                 <FlipHorizontal size={13} />
               </button>
@@ -289,7 +289,7 @@ export function PinWindow() {
                 type="button"
                 className="hud-icon-btn"
                 onClick={resetScale}
-                title="还原 100% 尺寸与角度"
+                title="还原尺寸"
               >
                 {Math.round(scale * 100)}%
               </button>

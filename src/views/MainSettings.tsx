@@ -44,6 +44,7 @@ import {
 
 import { AskActionsSettings } from "../components/AskActionsSettings";
 import { LocalOcrSettings } from "../components/LocalOcrSettings";
+import { Popconfirm } from "../components/Popconfirm";
 import { SelectionShortcutField } from "../components/SelectionShortcutField";
 import { UpdateButton } from "./UpdateButton";
 import { UpdateDialog } from "./UpdateDialog";
@@ -347,13 +348,28 @@ export function MainSettings() {
       setProxyMode(saved.proxy_url.trim() ? "custom" : "system");
       if (saved.translate_engine !== savedConfig?.translate_engine) setTextEngine(saved.translate_engine);
       if (saved.target_lang !== savedConfig?.target_lang) setTextTargetLang(saved.target_lang);
-      setStatus({ kind: "ok", text: startupChanged ? "已保存。托盘启动设置将在下次启动时生效。" : "设置已保存" });
+      setStatus({ kind: "ok", text: startupChanged ? "已保存，静默启动将在下次生效" : "已保存" });
     } catch (err) {
       setStatus({ kind: "err", text: String(err) });
     } finally {
       setSaving(false);
     }
   };
+
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+
+  useEffect(() => {
+    if (tab !== "settings" || recordingTarget) return;
+    const onSaveKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void handleSaveRef.current();
+      }
+    };
+    window.addEventListener("keydown", onSaveKey);
+    return () => window.removeEventListener("keydown", onSaveKey);
+  }, [tab, recordingTarget]);
 
   const handleTest = async (target: "ai" | "google" | "deepl" | "update") => {
     setTestingTarget(target);
@@ -555,9 +571,9 @@ export function MainSettings() {
             type="button"
             className="btn"
             onClick={handleClipboardImage}
-            title="直接识别并翻译当前剪贴板中的图片"
+            title="翻译剪贴板中的图片"
           >
-            <Clipboard size={14} /> 剪贴板图译
+            <Clipboard size={14} /> 译剪贴板
           </button>
 
           <button
@@ -565,7 +581,7 @@ export function MainSettings() {
             className="btn btn-dark"
             onClick={handleCaptureNow}
           >
-            <Camera size={14} /> 立即截图
+            <Camera size={14} /> 截图
           </button>
         </div>
       </header>
@@ -584,7 +600,7 @@ export function MainSettings() {
           aria-current={tab === "text" ? "page" : undefined}
           onClick={() => setTab("text")}
         >
-          <Languages size={13} /> 文本翻译
+          <Languages size={13} /> 翻译
         </button>
         <button
           type="button"
@@ -605,30 +621,30 @@ export function MainSettings() {
             {/* Section 1: Shortcut & Interaction */}
             <section className="card">
               <div className="card-title">
-                <span>截图与快捷键</span>
+                <span>快捷键与常规</span>
               </div>
 
               <div className="field-row">
                 <div className="field">
                   <label>
-                    全局截图快捷键
+                    截图快捷键
                     {shortcutStatus &&
                       config.shortcut.trim() !== shortcutStatus.shortcut && (
                         <span className="unsaved-hint">
-                          未保存（当前生效：{shortcutStatus.shortcut}）
+                          未保存（当前：{shortcutStatus.shortcut}）
                         </span>
                       )}
                   </label>
                   <div className="input-with-btn">
                     <input
                       className="input"
-                      value={recordingTarget === "capture" ? "请按下组合键（Esc 取消）..." : config.shortcut}
+                      value={recordingTarget === "capture" ? "按下组合键（Esc 取消）" : config.shortcut}
                       readOnly={recordingTarget === "capture"}
                       onChange={(e) =>
                         setConfig({ ...config, shortcut: e.target.value })
                       }
                       placeholder={
-                        IS_MAC ? "例如 Option+Q 或 ⌘+Shift+A" : "例如 Alt+Q 或 Ctrl+Shift+A"
+                        IS_MAC ? "如 Option+Q" : "如 Alt+Q"
                       }
                     />
                     <button
@@ -637,7 +653,7 @@ export function MainSettings() {
                       onClick={() =>
                         setRecordingTarget((v) => (v === "capture" ? null : "capture"))
                       }
-                      title="点击后直接按下键盘组合键进行录制"
+                      title="录制截图快捷键"
                     >
                       <Keyboard size={14} />
                       {recordingTarget === "capture" ? "取消" : "录制"}
@@ -645,7 +661,7 @@ export function MainSettings() {
                   </div>
                 </div>
                 <div className="field">
-                  <label>默认翻译目标语言</label>
+                  <label>目标语言</label>
                   <select
                     className="select"
                     value={config.target_lang}
@@ -677,7 +693,7 @@ export function MainSettings() {
 
               <div className="field" style={{ marginTop: 12 }}>
                 <label>
-                  剪贴板文字速译快捷键（可选，复制文字后一键浮窗翻译）
+                  剪贴板速译
                   {shortcutStatus &&
                     config.clipboard_shortcut.trim() !==
                       (shortcutStatus.clipboardShortcut ?? "") && (
@@ -691,7 +707,7 @@ export function MainSettings() {
                     className="input"
                     value={
                       recordingTarget === "clipboard"
-                        ? "请按下组合键（Esc 取消）..."
+                        ? "按下组合键（Esc 取消）"
                         : config.clipboard_shortcut
                     }
                     readOnly={recordingTarget === "clipboard"}
@@ -700,8 +716,8 @@ export function MainSettings() {
                     }
                     placeholder={
                       IS_MAC
-                        ? "留空则不启用，如 Option+W 或 Ctrl+Option+C"
-                        : "留空则不启用，如 Alt+W 或 Ctrl+Alt+C"
+                        ? "留空禁用，如 Option+W"
+                        : "留空禁用，如 Alt+W"
                     }
                   />
                   <button
@@ -710,7 +726,7 @@ export function MainSettings() {
                     onClick={() =>
                       setRecordingTarget((v) => (v === "clipboard" ? null : "clipboard"))
                     }
-                    title="录制剪贴板文字翻译快捷键"
+                    title="录制剪贴板速译快捷键"
                   >
                     <Keyboard size={14} />
                     {recordingTarget === "clipboard" ? "取消" : "录制"}
@@ -720,7 +736,7 @@ export function MainSettings() {
                       type="button"
                       className="btn"
                       onClick={() => setConfig({ ...config, clipboard_shortcut: "" })}
-                      title="清除并禁用此快捷键"
+                      title="清除快捷键"
                     >
                       <X size={14} />
                     </button>
@@ -734,7 +750,7 @@ export function MainSettings() {
                       className={`chip ${config.clipboard_shortcut === sc ? "active" : ""}`}
                       onClick={() => setConfig({ ...config, clipboard_shortcut: sc })}
                     >
-                      {sc ? formatShortcutLabel(sc) : "不启用"}
+                      {sc ? formatShortcutLabel(sc) : "关闭"}
                     </button>
                   ))}
                 </div>
@@ -767,9 +783,7 @@ export function MainSettings() {
               <div className="switch-row">
                 <div>
                   <div className="switch-label">框选后自动翻译</div>
-                  <div className="switch-desc">
-                    松开鼠标时直接翻译。手动框选后，空格在叠堆有截图时入堆，空堆时复制并退出。
-                  </div>
+                  <div className="switch-desc">松开鼠标直接翻译</div>
                 </div>
                 <button
                   type="button"
@@ -790,15 +804,13 @@ export function MainSettings() {
 
               <div className="switch-row">
                 <div>
-                  <div className="switch-label">启动时仅显示托盘图标</div>
-                  <div className="switch-desc">
-                    保存后，下次启动 Luma 时不打开主窗口。点击托盘图标可打开此窗口。
-                  </div>
+                  <div className="switch-label">静默启动</div>
+                  <div className="switch-desc">启动后最小化到托盘</div>
                 </div>
                 <button
                   type="button"
                   role="switch"
-                  aria-label="启动时仅显示托盘图标"
+                  aria-label="静默启动"
                   aria-checked={config.start_minimized}
                   className={`ios-switch ${config.start_minimized ? "on" : ""}`}
                   onClick={() =>
@@ -814,15 +826,13 @@ export function MainSettings() {
 
               <div className="switch-row">
                 <div>
-                  <div className="switch-label">开机自动启动 ({OS_LABEL})</div>
-                  <div className="switch-desc">
-                    登录 {OS_LABEL} 时自动启动 Luma。
-                  </div>
+                  <div className="switch-label">开机自启</div>
+                  <div className="switch-desc">登录 {OS_LABEL} 时自动运行</div>
                 </div>
                 <button
                   type="button"
                   role="switch"
-                  aria-label="开机自动启动"
+                  aria-label="开机自启"
                   aria-checked={config.launch_at_startup}
                   className={`ios-switch ${config.launch_at_startup ? "on" : ""}`}
                   onClick={() =>
@@ -838,10 +848,8 @@ export function MainSettings() {
 
               <div className="switch-row">
                 <div>
-                  <div className="switch-label">悬浮叠堆最大暂存张数</div>
-                  <div className="switch-desc">
-                    多框选后可“入叠堆”，在桌面右下角统一拼图导出或批量分析（2–12 张）
-                  </div>
+                  <div className="switch-label">叠堆上限</div>
+                  <div className="switch-desc">右下角暂存卡片上限</div>
                 </div>
                 <div className="chip-row" style={{ marginTop: 0 }}>
                   {[4, 6, 8, 12].map((n) => (
@@ -859,15 +867,13 @@ export function MainSettings() {
 
               <div className="switch-row">
                 <div>
-                  <div className="switch-label">复制或导出叠堆后自动清空并关闭</div>
-                  <div className="switch-desc">
-                    默认关闭：复制拼接图、保存或复制多张图片文件后保留叠堆和功能区，由你手动关闭或清空
-                  </div>
+                  <div className="switch-label">导出后清空叠堆</div>
+                  <div className="switch-desc">复制或保存拼图后自动清空</div>
                 </div>
                 <button
                   type="button"
                   role="switch"
-                  aria-label="复制或导出叠堆后自动清空并关闭"
+                  aria-label="导出后清空叠堆"
                   aria-checked={config.clear_stack_after_output}
                   className={`ios-switch ${config.clear_stack_after_output ? "on" : ""}`}
                   onClick={() =>
@@ -883,10 +889,8 @@ export function MainSettings() {
 
               <div className="switch-row">
                 <div>
-                  <div className="switch-label">界面外观主题</div>
-                  <div className="switch-desc">
-                    支持跟随 {OS_LABEL} 系统深浅色，或固定浅色 / 深色模式（所有窗口同步生效）
-                  </div>
+                  <div className="switch-label">外观</div>
+                  <div className="switch-desc">深浅色模式，全窗口同步</div>
                 </div>
                 <div className="chip-row" style={{ marginTop: 0 }}>
                   {(
@@ -916,8 +920,8 @@ export function MainSettings() {
             {/* Section 2: Translation Engines (AI / Google / DeepL) */}
             <section className="card">
               <div className="card-title">
-                <span>默认翻译引擎</span>
-                <span className="card-subtitle">浮窗内也可随时一键切换</span>
+                <span>翻译引擎</span>
+                <span className="card-subtitle">浮窗内可随时切换</span>
               </div>
 
               <div className="engine-cards">
@@ -940,7 +944,7 @@ export function MainSettings() {
 
               <div className="field-row">
                 <div className="field">
-                  <label>Google Cloud API Key（可选，留空用免费接口）</label>
+                  <label>Google Key（可选）</label>
                   <div className="input-with-btn">
                     <input
                       className="input"
@@ -949,23 +953,23 @@ export function MainSettings() {
                       onChange={(e) =>
                         setConfig({ ...config, google_api_key: e.target.value })
                       }
-                      placeholder="留空即免 Key 使用 Google 翻译"
+                      placeholder="留空使用免费接口"
                     />
                     <button
                       type="button"
                       className="btn"
                       onClick={() => handleTest("google")}
                       disabled={testingTarget !== null}
-                      title="测试 Google 翻译连通性"
+                      title="测试 Google 翻译连接"
                     >
                       <Zap size={14} />
-                      {testingTarget === "google" ? "..." : "测"}
+                      {testingTarget === "google" ? "…" : "测试"}
                     </button>
                   </div>
                 </div>
 
                 <div className="field">
-                  <label>DeepL API Key（自动识别 Free :fx 与 Pro）</label>
+                  <label>DeepL Key</label>
                   <div className="input-with-btn">
                     <input
                       className="input"
@@ -974,7 +978,7 @@ export function MainSettings() {
                       onChange={(e) =>
                         setConfig({ ...config, deepl_api_key: e.target.value })
                       }
-                      placeholder="xxxxxxxx-xxxx-...:fx"
+                      placeholder="Free (:fx) 或 Pro Key"
                     />
                     <button
                       type="button"
@@ -989,10 +993,10 @@ export function MainSettings() {
                       className="btn"
                       onClick={() => handleTest("deepl")}
                       disabled={testingTarget !== null}
-                      title="测试 DeepL 连通性"
+                      title="测试 DeepL 连接"
                     >
                       <Zap size={14} />
-                      {testingTarget === "deepl" ? "..." : "测"}
+                      {testingTarget === "deepl" ? "…" : "测试"}
                     </button>
                   </div>
                 </div>
@@ -1002,7 +1006,7 @@ export function MainSettings() {
             {/* Section 3: Vision AI Model (OCR + AI Translate + Ask AI) */}
             <section className="card">
               <div className="card-title">
-                <span>视觉 AI 模型（识字 OCR / 问 AI / AI 翻译）</span>
+                <span>视觉 AI</span>
                 <button
                   type="button"
                   className="btn btn-sm"
@@ -1010,7 +1014,7 @@ export function MainSettings() {
                   disabled={testingTarget !== null}
                 >
                   <Zap size={13} />
-                  {testingTarget === "ai" ? "测试中..." : "测试 AI 连通"}
+                  {testingTarget === "ai" ? "测试中…" : "测试连接"}
                 </button>
               </div>
 
@@ -1032,7 +1036,7 @@ export function MainSettings() {
 
               <div className="field-row">
                 <div className="field">
-                  <label>API Base URL (OpenAI 兼容格式)</label>
+                  <label>接口地址</label>
                   <input
                     className="input"
                     value={config.api_base_url}
@@ -1041,7 +1045,7 @@ export function MainSettings() {
                   />
                 </div>
                 <div className="field">
-                  <label>视觉模型名称</label>
+                  <label>模型</label>
                   <input
                     className="input"
                     value={config.model}
@@ -1051,9 +1055,7 @@ export function MainSettings() {
                     placeholder="gpt-4o-mini"
                   />
                   <small>
-                    {IS_MAC
-                      ? "纯文本模型（如 qwen-plus）使用系统内置 Apple Vision OCR。视觉模型会将所选截图发送至配置的 AI 服务。"
-                      : "纯文本模型（如 qwen-plus）使用本地 OCR（已安装 RapidOCR 时优先使用，否则回退 Windows OCR）。视觉模型会将所选截图发送至配置的 AI 服务。"}
+                    纯文本模型自动走本地识字，视觉模型直接看图。
                   </small>
                 </div>
               </div>
@@ -1068,7 +1070,7 @@ export function MainSettings() {
                     onChange={(e) =>
                       setConfig({ ...config, api_key: e.target.value })
                     }
-                    placeholder="sk-...（仅保存在本机应用配置目录，本地 Ollama 可留空）"
+                    placeholder="sk-...（本地 Ollama 可留空）"
                   />
                   <button
                     type="button"
@@ -1082,7 +1084,7 @@ export function MainSettings() {
               </div>
 
               <div className="field">
-                <label>翻译附加偏好（可选）</label>
+                <label>翻译偏好（可选）</label>
                 <textarea
                   className="textarea"
                   rows={2}
@@ -1090,12 +1092,12 @@ export function MainSettings() {
                   onChange={(e) =>
                     setConfig({ ...config, custom_prompt: e.target.value })
                   }
-                  placeholder="例如：遇到代码标识符、API 名称或专有名词请保留英文原词"
+                  placeholder="如：保留代码标识符与专有名词"
                 />
               </div>
 
               <div className="field">
-                <label>自定义术语表（每行一条，支持 = 或 =&gt; 分隔）</label>
+                <label>术语表</label>
                 <textarea
                   className="textarea"
                   rows={3}
@@ -1103,7 +1105,7 @@ export function MainSettings() {
                   onChange={(e) =>
                     setConfig({ ...config, glossary: e.target.value })
                   }
-                  placeholder={"# 以 # 开头的行为注释\nLuma => Luma\nLLM = 大语言模型"}
+                  placeholder={"每行一条，支持 = 或 =>\nLuma = Luma\nLLM = 大语言模型"}
                 />
               </div>
             </section>
@@ -1135,26 +1137,24 @@ export function MainSettings() {
             {/* Section 4: Network Proxy & Update Source */}
             <section className="card">
               <div className="card-title">
-                <span>网络代理与更新</span>
+                <span>网络与更新</span>
                 <button
                   type="button"
                   className="btn btn-sm"
                   onClick={() => handleTest("update")}
                   disabled={testingTarget !== null}
-                  title="立即使用当前代理和更新源地址测试连通性"
+                  title="测试代理与更新源连接"
                 >
                   <Zap size={13} />
-                  {testingTarget === "update" ? "测试中..." : "测试代理与更新"}
+                  {testingTarget === "update" ? "测试中…" : "测试连接"}
                 </button>
               </div>
 
               <div className="switch-row" style={{ paddingTop: 0, borderTop: "none" }}>
                 <div>
-                  <div className="switch-label">代理模式</div>
+                  <div className="switch-label">代理</div>
                   <div className="switch-desc">
-                    {IS_MAC
-                      ? "同时作用于视觉 AI、Google / DeepL 翻译与在线更新；本地回环地址自动直连。"
-                      : "同时作用于视觉 AI、Google / DeepL 翻译、RapidOCR 下载与在线更新；本地回环地址自动直连。"}
+                    用于翻译、模型下载与更新，本地地址自动直连
                   </div>
                 </div>
                 <div className="segmented" role="group" aria-label="代理模式">
@@ -1176,7 +1176,7 @@ export function MainSettings() {
                     className={`seg-btn ${proxyMode === "custom" ? "active" : ""}`}
                     onClick={() => setProxyMode("custom")}
                   >
-                    手动配置
+                    手动
                   </button>
                 </div>
               </div>
@@ -1188,13 +1188,13 @@ export function MainSettings() {
                   />
                   <span>
                     {systemProxy?.enabled && systemProxy.proxyUrl
-                      ? `已自动跟随系统代理：${systemProxy.proxyUrl}`
-                      : "当前系统未启用代理，将直接联网"}
+                      ? `系统代理：${systemProxy.proxyUrl}`
+                      : "未启用系统代理，直连网络"}
                   </span>
                 </div>
               ) : (
                 <div className="field" style={{ marginTop: 10 }}>
-                  <label htmlFor="custom-proxy-input">代理服务器地址（支持 HTTP / HTTPS / SOCKS5）</label>
+                  <label htmlFor="custom-proxy-input">代理地址（HTTP / SOCKS5）</label>
                   <input
                     id="custom-proxy-input"
                     className="input"
@@ -1202,7 +1202,7 @@ export function MainSettings() {
                     onChange={(e) =>
                       setConfig({ ...config, proxy_url: e.target.value })
                     }
-                    placeholder="http://127.0.0.1:端口 或 socks5h://127.0.0.1:端口"
+                    placeholder="http://127.0.0.1:7890 或 socks5h://127.0.0.1:7891"
                   />
                 </div>
               )}
@@ -1215,7 +1215,7 @@ export function MainSettings() {
                   onClick={() => setShowUpdateMirror((v) => !v)}
                 >
                   {showUpdateMirror ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                  高级选项：自定义更新源镜像
+                  自定义更新源
                 </button>
                 {showUpdateMirror && (
                   <div className="field" style={{ marginTop: 8 }}>
@@ -1225,10 +1225,10 @@ export function MainSettings() {
                       onChange={(e) =>
                         setConfig({ ...config, update_feed_url: e.target.value })
                       }
-                      placeholder="留空使用官方 GitHub Releases，或填写以 latest.json 结尾的 HTTPS 地址"
+                      placeholder="留空走官方源，或填写 latest.json 的 HTTPS 地址"
                     />
                     <small>
-                      若自定义更新源不可用会自动回退官方源；无论使用哪个源，安装前均强制验证官方签名。
+                      不可用时自动回退官方源，安装前强制校验签名。
                     </small>
                   </div>
                 )}
@@ -1240,7 +1240,7 @@ export function MainSettings() {
           <div className="settings-grid">
             <section className="card">
               <div className="card-title">
-                <span>快捷文本翻译台</span>
+                <span>文本翻译</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <button
                     type="button"
@@ -1248,9 +1248,9 @@ export function MainSettings() {
                     onClick={() =>
                       invoke("analyze_clipboard_text").catch((err) => setTextError(String(err)))
                     }
-                    title="直接翻译当前剪贴板文字并弹出浮窗"
+                    title="翻译剪贴板文字并弹出浮窗"
                   >
-                    <Clipboard size={12} /> 浮窗译剪贴板文字
+                    <Clipboard size={12} /> 译剪贴板
                   </button>
                 </div>
               </div>
@@ -1294,13 +1294,13 @@ export function MainSettings() {
                       handleTranslateText();
                     }
                   }}
-                  placeholder={`粘贴或输入待翻译文本，按 ${MOD_LABEL}+Enter 快速翻译（自动应用自定义术语表）...`}
+                  placeholder={`输入或粘贴文本，${MOD_LABEL}+Enter 翻译…`}
                 />
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {textInput.trim().length} 字符 · {MOD_LABEL}+Enter 快速翻译
+                  {textInput.trim().length} 字 · {MOD_LABEL}+Enter
                 </span>
                 <div style={{ display: "flex", gap: 8 }}>
                   {textInput && (
@@ -1322,7 +1322,7 @@ export function MainSettings() {
                     onClick={handleTranslateText}
                     disabled={textBusy || !textInput.trim()}
                   >
-                    <Languages size={14} /> {textBusy ? "翻译中..." : "立即翻译"}
+                    <Languages size={14} /> {textBusy ? "翻译中…" : "翻译"}
                   </button>
                 </div>
               </div>
@@ -1335,7 +1335,7 @@ export function MainSettings() {
                 <div className="card-title">
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <span className="pulse-dot" />
-                    译文结果（{textTargetLang} · 正在流式输出...）
+                    译文 · {textTargetLang}
                   </span>
                 </div>
                 <div className="result-translated">
@@ -1349,14 +1349,14 @@ export function MainSettings() {
               <section className="card">
                 <div className="card-title">
                   <span>
-                    译文结果（{textResult.targetLang} · {textResult.model} · {textResult.elapsedMs}ms）
+                    译文 · {textResult.targetLang} · {textResult.elapsedMs}ms
                   </span>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
                       type="button"
                       className="btn btn-sm"
                       onClick={() => speakDirectText(textResult.translatedText)}
-                      title="朗读译文"
+                      title="朗读"
                     >
                       <Volume2 size={12} /> 朗读
                     </button>
@@ -1370,7 +1370,7 @@ export function MainSettings() {
                       }}
                     >
                       {copiedTextOut ? <Check size={12} /> : <Copy size={12} />}
-                      {copiedTextOut ? "已复制" : "复制译文"}
+                      {copiedTextOut ? "已复制" : "复制"}
                     </button>
                   </div>
                 </div>
@@ -1387,7 +1387,7 @@ export function MainSettings() {
                   className="input history-search-input"
                   value={historyQuery}
                   onChange={(e) => setHistoryQuery(e.target.value)}
-                  placeholder="搜索历史原文、译文或模型..."
+                  placeholder="搜索原文、译文或模型…"
                 />
                 {historyQuery && (
                   <button
@@ -1431,7 +1431,8 @@ export function MainSettings() {
               }}
             >
               <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-                本地已持久化 {history.length} 条记录（最多保留 100 条，当前匹配 {filteredHistory.length} 条）
+                共 {history.length} 条
+                {filteredHistory.length !== history.length ? ` · 匹配 ${filteredHistory.length} 条` : ""}
               </span>
               {history.length > 0 && (
                 <div style={{ display: "flex", gap: 6 }}>
@@ -1449,16 +1450,20 @@ export function MainSettings() {
                   >
                     <Download size={12} /> 导出 JSON
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={async () => {
+                  <Popconfirm
+                    message="清空全部历史记录？"
+                    confirmLabel="清空"
+                    onConfirm={async () => {
                       await invoke("clear_history");
                       setHistory([]);
                     }}
                   >
-                    <Trash2 size={12} /> 清空
-                  </button>
+                    {(triggerProps) => (
+                      <button type="button" className="btn btn-sm" {...triggerProps}>
+                        <Trash2 size={12} /> 清空
+                      </button>
+                    )}
+                  </Popconfirm>
                 </div>
               )}
             </div>
@@ -1474,8 +1479,8 @@ export function MainSettings() {
                 }}
               >
                 {history.length === 0
-                  ? `暂无记录，按 ${formatShortcutLabel(config.shortcut || "Alt+Q")} 开始截图体验`
-                  : "没有匹配搜索条件的历史记录"}
+                  ? `暂无记录，按 ${formatShortcutLabel(config.shortcut || "Alt+Q")} 截图`
+                  : "没有匹配的记录"}
               </div>
             ) : (
               filteredHistory.map((item) => (
@@ -1483,7 +1488,7 @@ export function MainSettings() {
                   <div className="history-meta">
                     <span>
                       {item.mode === "ocr"
-                        ? `识字 OCR (${item.sourceLang})`
+                        ? `识字 (${item.sourceLang})`
                         : `${item.sourceLang} → ${item.targetLang}`}{" "}
                       · {item.model} · {item.elapsedMs}ms
                       {item.createdAtMs ? ` · ${formatTimestamp(item.createdAtMs)}` : ""}
@@ -1497,9 +1502,9 @@ export function MainSettings() {
                             setStatus({ kind: "err", text: String(err) })
                           )
                         }
-                        title="在桌面结果浮窗中重新打开此记录"
+                        title="在浮窗中打开"
                       >
-                        <ExternalLink size={12} /> 浮窗查看
+                        <ExternalLink size={12} /> 浮窗
                       </button>
                       <button
                         type="button"
@@ -1520,7 +1525,7 @@ export function MainSettings() {
                         type="button"
                         className="btn btn-sm"
                         onClick={() => deleteHistoryItem(item.id)}
-                        title="删除此条"
+                        title="删除"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -1551,11 +1556,11 @@ export function MainSettings() {
         <footer className="footer-bar">
           <div className={`status-msg ${status.kind}`} role="status">
             {status.text && <div>{status.text}</div>}
-            {dirty && <div className="draft-status">有未保存的设置</div>}
+            {dirty && <div className="draft-status">有未保存修改</div>}
             {!status.text && !dirty && tab === "settings" && (
               <div>
                 {savedConfig
-                  ? "设置已保存"
+                  ? "已保存"
                   : configLoadError ?? "正在读取设置…"}
               </div>
             )}
@@ -1566,15 +1571,15 @@ export function MainSettings() {
           {tab === "settings" && (
             <div className="footer-actions">
               <button type="button" className="btn btn-sm" disabled={saving || !savedConfig}
-                onClick={handleExportConfig} title="导出已保存的设置">
+                onClick={handleExportConfig} title="导出设置">
                 <Download size={13} /> 导出
               </button>
               <button type="button" className="btn btn-sm" disabled={saving || !savedConfig}
-                onClick={handleImportConfig} title="从 JSON 备份导入设置">
+                onClick={handleImportConfig} title="导入设置">
                 <Upload size={13} /> 导入
               </button>
               <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving || !dirty}>
-                {saving ? "保存中…" : "保存设置"}
+                {saving ? "保存中…" : "保存"}
               </button>
             </div>
           )}

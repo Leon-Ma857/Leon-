@@ -2110,8 +2110,8 @@ export function OverlayCapture() {
       {cutoutRects.length === 0 && (
         <div className="overlay-hint">
           {stagedStatus
-            ? `已入叠堆 ${stagedStatus.count}/${stagedStatus.maxSize} 张 · 继续拖拽框选下一张，或按 Esc / 右键完成查看叠堆`
-            : "拖拽框选区域 · Shift+拖拽或点“加选”可多框选 · 按 C 取色 · 方向键 1px 微调 · Esc 取消"}
+            ? `叠堆 ${stagedStatus.count}/${stagedStatus.maxSize} · 继续框选，Esc / 右键退出`
+            : "拖拽框选 · Shift 多选 · C 取色 · Esc 退出"}
         </div>
       )}
 
@@ -2119,14 +2119,14 @@ export function OverlayCapture() {
         <div className="overlay-mode-banner" onMouseDown={(e) => e.stopPropagation()}>
           <span className="overlay-mode-banner-dot" />
           <span>
-            加选模式已开启（已框选 {regions.length} 处）：在屏幕空白处继续拖拽框选下一个区域
+            加选模式（已选 {regions.length} 处）· 继续拖拽框选
           </span>
           <button
             type="button"
             className="overlay-mode-banner-btn"
             onClick={() => setMultiAddMode(false)}
           >
-            完成加选
+            完成
           </button>
         </div>
       )}
@@ -2517,7 +2517,7 @@ export function OverlayCapture() {
                 setTool("select");
                 setMultiAddMode((v) => !v);
               }}
-              title="开启后可在空白处继续框选多个区域，再一键批量翻译/识字/入叠堆"
+              title="框选多个区域批量处理"
             >
               <PlusSquare size={14} /> {multiAddMode ? `加选中(${regions.length})` : `加选${regions.length > 1 ? `(${regions.length})` : ""}`}
             </button>
@@ -2528,7 +2528,7 @@ export function OverlayCapture() {
               type="button"
               className="hud-icon-btn primary"
               onClick={() => runInPlaceAnalysis("translate")}
-              title="原位翻译选区并打开侧栏 (T / Enter) · Tab 快捷原位译文切换"
+              title="翻译 (T / Enter) · Tab 切换原位译文"
             >
               <Languages size={14} /> 翻译
             </button>
@@ -2536,7 +2536,7 @@ export function OverlayCapture() {
               type="button"
               className="hud-icon-btn"
               onClick={() => runInPlaceAnalysis("ocr")}
-              title="原位识别文字 OCR (O)"
+              title="识字 (O)"
             >
               <ScanText size={14} /> 识字
             </button>
@@ -2544,7 +2544,7 @@ export function OverlayCapture() {
               type="button"
               className="hud-icon-btn"
               onClick={() => runInPlaceAnalysis("ask")}
-              title="原位问 AI (A)"
+              title="问 AI (A)"
             >
               <Sparkles size={14} /> 问 AI
             </button>
@@ -2552,7 +2552,7 @@ export function OverlayCapture() {
               type="button"
               className="hud-icon-btn"
               onClick={() => void runScanQr(activeRegion)}
-              title="识别选区二维码 (Q)"
+              title="扫码 (Q)"
             >
               <QrCode size={14} /> 扫码
             </button>
@@ -2560,7 +2560,7 @@ export function OverlayCapture() {
               type="button"
               className="hud-icon-btn"
               onClick={() => void runScrollCapture(activeRegion)}
-              title="滚动截长图（自动向下滚动并拼接，按 Esc 可提前结束）"
+              title="滚动截长图 · Esc 结束"
             >
               <ChevronsDown size={14} /> 截长图
             </button>
@@ -2568,7 +2568,7 @@ export function OverlayCapture() {
               type="button"
               className="hud-icon-btn"
               onClick={runStageToStack}
-              title="入叠堆 (B) · 叠堆已有截图时也可按空格"
+              title="入叠堆 (B)"
             >
               <Layers size={14} /> 入叠堆
             </button>
@@ -2576,7 +2576,7 @@ export function OverlayCapture() {
               type="button"
               className="hud-icon-btn"
               onClick={runPinAll}
-              title="贴图置顶桌面 (P)"
+              title="贴图 (P)"
             >
               <Pin size={14} />
             </button>
@@ -2584,7 +2584,7 @@ export function OverlayCapture() {
               type="button"
               className="hud-icon-btn"
               onClick={() => runDirectAction(activeRegion, "save")}
-              title="保存当前选区 PNG (S)"
+              title="保存 PNG (S)"
             >
               <Download size={14} />
             </button>
@@ -2592,7 +2592,7 @@ export function OverlayCapture() {
               type="button"
               className="hud-icon-btn"
               onClick={() => runDirectAction(activeRegion, "copy")}
-              title="复制当前选区截图 (C) · 叠堆为空时，空格复制并退出"
+              title="复制 (C / 空格)"
             >
               <Copy size={14} />
             </button>
@@ -2603,7 +2603,7 @@ export function OverlayCapture() {
                 clearSelectionState();
                 invoke("overlay_clear_analysis").catch(console.error);
               }}
-              title="重新框选"
+              title="重选"
             >
               <RotateCcw size={13} />
             </button>
@@ -2629,7 +2629,7 @@ export function OverlayCapture() {
                         className={`color-dot ${color === c ? "active" : ""}`}
                         style={{ background: c }}
                         onClick={() => setColor(c)}
-                        title="切换标注颜色"
+                        title="颜色"
                       />
                     ))}
                   </div>

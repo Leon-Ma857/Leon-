@@ -11,8 +11,8 @@ export interface SelectionShortcutFieldProps {
 }
 
 const SELECTION_SHORTCUT_PRESETS = [
-  { value: "", label: "不启用" },
-  { value: "Space", label: "空格 (Space)" },
+  { value: "", label: "关闭" },
+  { value: "Space", label: "Space" },
   { value: "Tab", label: "Tab" },
   { value: "Alt+E", label: `${ALT_LABEL}+E` },
 ] as const;
@@ -34,7 +34,7 @@ export function SelectionShortcutField({
     <>
       <div className="field" style={{ marginTop: 12 }}>
         <label htmlFor="selection-shortcut-input">
-          全局划词翻译快捷键（不污染剪贴板，选中任意软件文字后原地弹译文）
+          划词翻译
           {unsaved && <span className="unsaved-hint">未保存</span>}
         </label>
         <div className="input-with-btn">
@@ -43,18 +43,18 @@ export function SelectionShortcutField({
             className="input"
             value={
               recording
-                ? "请按下快捷键，支持单键 Space / Tab 或组合键（Esc 取消）..."
+                ? "按下快捷键，支持 Space / Tab（Esc 取消）"
                 : value
             }
             readOnly={recording}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={`留空则不启用，如 Space、Tab 或 ${ALT_LABEL}+E`}
+            placeholder={`留空禁用，如 Space、Tab 或 ${ALT_LABEL}+E`}
           />
           <button
             type="button"
             className={`btn ${recording ? "btn-primary" : ""}`}
             onClick={onToggleRecord}
-            title="录制全局划词翻译快捷键（支持单键 Space / Tab 或组合键）"
+            title="录制划词快捷键"
           >
             <Keyboard size={14} />
             {recording ? "取消" : "录制"}
@@ -64,8 +64,8 @@ export function SelectionShortcutField({
               type="button"
               className="btn"
               onClick={() => onChange("")}
-              title="清除并禁用此快捷键"
-              aria-label="清除全局划词翻译快捷键"
+              title="清除快捷键"
+              aria-label="清除划词翻译快捷键"
             >
               <X size={14} />
             </button>
@@ -85,7 +85,7 @@ export function SelectionShortcutField({
         </div>
         {isSmartSingleKey && (
           <small className="selection-smart-hint">
-            智能单键：鼠标划选或双击选中文字后轻按 {normalized === "Space" || normalized.toLowerCase() === "space" ? "Space（空格）" : "Tab"} 即可触发翻译；平时正常打字、切焦点与全屏游戏/视频均自动避让不受影响。
+            选中文字后轻按 {normalized.toLowerCase() === "space" ? "Space" : "Tab"} 即可翻译，正常输入与全屏游戏自动避让。
           </small>
         )}
       </div>

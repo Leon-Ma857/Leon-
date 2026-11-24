@@ -1446,7 +1446,17 @@ async fn try_local_ocr_layout_from_b64(
 
     if mode != "windows" && local_ocr::is_installed() {
         match local_ocr::ocr_png_bytes_with_layout(png_bytes.clone(), ocr_lang).await {
+            Ok((lang, text, blocks)) if !text.trim().is_empty() => {
+                return Ok((lang, text, blocks, "RapidOCR (PP-OCRv4)"));
+            }
             Ok((lang, text, blocks)) => {
+                eprintln!("[ocr] RapidOCR returned empty text (mode={mode}), falling back to {fallback_label}");
+                if let Ok((fb_lang, fb_text, fb_blocks)) = ocr_png_bytes_with_layout(png_bytes).await
+                {
+                    if !fb_text.trim().is_empty() {
+                        return Ok((fb_lang, fb_text, fb_blocks, fallback_label));
+                    }
+                }
                 return Ok((lang, text, blocks, "RapidOCR (PP-OCRv4)"));
             }
             Err(rapid_err) => {

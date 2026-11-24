@@ -988,23 +988,24 @@ mod imp {
                     continue;
                 }
                 tried_primary += 1;
-                if let Ok((text, lines)) = extract_lines_with_engine(
-                    eng,
-                    &bitmap,
-                    &variant,
-                ) {
-                    if !text.trim().is_empty() {
-                        let mut score = score_ocr_candidate(tag, &text);
-                        if scale == 1 && src_h >= 120 {
-                            score += 4;
-                        } else if scale >= 2 && src_h < 64 {
-                            score += 10;
+                match extract_lines_with_engine(eng, &bitmap, &variant) {
+                    Ok((text, lines)) => {
+                        if !text.trim().is_empty() {
+                            let mut score = score_ocr_candidate(tag, &text);
+                            if scale == 1 && src_h >= 120 {
+                                score += 4;
+                            } else if scale >= 2 && src_h < 64 {
+                                score += 10;
+                            }
+                            if score > best_score {
+                                best_score = score;
+                                best_text = text;
+                                best_lines = lines;
+                            }
                         }
-                        if score > best_score {
-                            best_score = score;
-                            best_text = text;
-                            best_lines = lines;
-                        }
+                    }
+                    Err(err) => {
+                        eprintln!("[win_ocr] engine {tag} scale={scale} failed: {err}");
                     }
                 }
             }

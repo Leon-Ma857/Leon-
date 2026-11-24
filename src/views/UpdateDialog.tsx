@@ -20,7 +20,7 @@ function renderReleaseNotes(notes?: string | null) {
   if (!trimmed) {
     return (
       <p className="update-notes-empty">
-        此版本未附带详细更新说明。下载完成后将使用内置 Luma 官方公钥强制校验更新签名。
+        暂无更新说明。安装前会自动校验官方签名。
       </p>
     );
   }
@@ -137,7 +137,7 @@ export function UpdateDialog({
           {checking && !available ? (
             <div className="update-state-panel">
               <RefreshCw size={18} className="spin" />
-              <span>正在连接更新服务器检查最新版本…</span>
+              <span>正在检查更新…</span>
             </div>
           ) : available ? (
             <>
@@ -150,8 +150,8 @@ export function UpdateDialog({
                 <ShieldCheck size={14} />
                 <span>
                   {IS_MAC
-                    ? "将打开 GitHub Release 下载 macOS 安装镜像 (.dmg)，下载后拖入「应用程序」覆盖即可，配置和历史记录会保留。"
-                    : "安装前会验证官方更新签名。安装时 Luma 将自动重启，暂存截图与贴图会关闭，配置和历史记录会保留。"}
+                    ? "前往下载 .dmg 安装包，拖入「应用程序」覆盖即可，配置与历史记录保留。"
+                    : "更新前自动校验官方签名，安装时自动重启，配置与历史记录保留。"}
                 </span>
               </div>
             </>
@@ -165,7 +165,7 @@ export function UpdateDialog({
           {dirty && available && !installing && (
             <div className="update-warn-banner">
               <AlertTriangle size={14} />
-              <span>检测到未保存的设置，请先关闭此弹窗并保存设置后再安装更新。</span>
+              <span>有未保存设置，请先保存后再更新。</span>
             </div>
           )}
 

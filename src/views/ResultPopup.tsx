@@ -574,7 +574,7 @@ export function ResultPopup() {
                 type="button"
                 className={`icon-btn ${showThumb ? "active" : ""}`}
                 onClick={() => setShowThumb((v) => !v)}
-                title="查看/隐藏截图缩略图"
+                title="截图预览"
               >
                 <ImageIcon size={13} />
               </button>
@@ -584,7 +584,7 @@ export function ResultPopup() {
                 type="button"
                 className="icon-btn"
                 onClick={copyCropImage}
-                title="复制截图图片"
+                title="复制截图"
               >
                 {copiedKey === "img" ? <Check size={13} /> : <Copy size={13} />}
               </button>
@@ -741,10 +741,10 @@ export function ResultPopup() {
                               type="button"
                               className={`mini-chip ${mergeLines ? "active" : ""}`}
                               onClick={() => setMergeLines((v) => !v)}
-                              title="去除 PDF / 截图里句子中间的多余单行换行（保留段落空行）"
+                              title="合并多余断行"
                             >
                               <WrapText size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} />
-                              合并换行
+                              合并断行
                             </button>
                             {mergeLines && !editingOrig && (
                               <button
@@ -757,7 +757,7 @@ export function ResultPopup() {
                                     targetLangOverride: activeTargetLang,
                                   }).catch(console.error)
                                 }
-                                title="按合并换行后的原文重新翻译"
+                                title="重译"
                               >
                                 <RotateCw size={11} /> 重译
                               </button>
@@ -900,11 +900,7 @@ export function ResultPopup() {
                     ) : (
                       <div className="loading-status">
                         <Loader2 size={14} className="spin" />
-                        <span>
-                          {state.imageDataUrl
-                            ? "AI 正在结合截图分析回答..."
-                            : "AI 正在结合文本分析回答..."}
-                        </span>
+                        <span>正在思考…</span>
                       </div>
                     ))}
 

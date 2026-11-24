@@ -1674,8 +1674,10 @@ fn spawn_rapidocr_worker(
         .arg(format!("--keys={}", spec.keys))
         .arg("--ensureAscii=1")
         .arg(format!("--numThread={num_threads}"))
-        .arg("--doAngle=1")
-        .arg("--mostAngle=1")
+        .arg("--doAngle=0")
+        .arg("--mostAngle=0")
+        .arg("--boxScoreThresh=0.35")
+        .arg("--boxThresh=0.25")
         .arg("--padding=50")
         .arg("--maxSideLen=1600")
         .stdin(Stdio::piped())
@@ -2098,18 +2100,15 @@ fn rows_have_aligned_columns(a: &[RowCell], b: &[RowCell], avg_h: f32) -> bool {
     matched >= 2
 }
 
-/// Convert RapidOCR detection/recognition items into layout-aware text and `OcrLayoutBlock`s.
-pub fn parse_and_layout_rapidocr_result(
-    items: Vec<RapidOcrItem>,
-    img_w: u32,
-    img_h: u32,
-) -> (String, String, Vec<OcrLayoutBlock>) {
-    let w_f = img_w.max(1) as f32;
-    let h_f = img_h.max(1) as f32;
-
-    let mut tokens: Vec<NormToken> = Vec::with_capacity(items.len());
+fn collect_norm_tokens(
+    items: &[RapidOcrItem],
+    min_score: f32,
+    w_f: f32,
+    h_f: f32,
+) -> Vec<NormToken> {
+    let mut tokens = Vec::with_capacity(items.len());
     for item in items {
-        if item.score < 0.45 {
+        if item.score < min_score {
             continue;
         }
         let trimmed = item.text.trim();
@@ -2144,6 +2143,30 @@ pub fn parse_and_layout_rapidocr_result(
             h: nh,
             text: trimmed.to_string(),
         });
+    }
+    tokens
+}
+
+/// Convert RapidOCR detection/recognition items into layout-aware text and `OcrLayoutBlock`s.
+pub fn parse_and_layout_rapidocr_result(
+    items: Vec<RapidOcrItem>,
+    img_w: u32,
+    img_h: u32,
+) -> (String, String, Vec<OcrLayoutBlock>) {
+    let w_f = img_w.max(1) as f32;
+    let h_f = img_h.max(1) as f32;
+
+    let mut tokens = collect_norm_tokens(&items, 0.45, w_f, h_f);
+    if tokens.is_empty() {
+        let relaxed = collect_norm_tokens(&items, 0.30, w_f, h_f);
+        let meaningful_chars = relaxed
+            .iter()
+            .flat_map(|t| t.text.chars())
+            .filter(|c| c.is_alphanumeric() || is_cjk_char(*c))
+            .count();
+        if meaningful_chars >= 2 {
+            tokens = relaxed;
+        }
     }
 
     if tokens.is_empty() {
@@ -2319,6 +2342,118 @@ pub fn parse_and_layout_rapidocr_result(
     (detected, text, blocks)
 }
 
+fn flatten_dynamic_to_rgb(img: &image::DynamicImage) -> image::RgbImage {
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let mut rgb = image::RgbImage::new(w, h);
+    for (x, y, px) in rgba.enumerate_pixels() {
+        let [r, g, b, a] = px.0;
+        if a == 255 {
+            rgb.put_pixel(x, y, image::Rgb([r, g, b]));
+        } else if a == 0 {
+            rgb.put_pixel(x, y, image::Rgb([255, 255, 255]));
+        } else {
+            let alpha = u16::from(a);
+            let inv = 255 - alpha;
+            let rr = ((u16::from(r) * alpha + 255 * inv) / 255) as u8;
+            let gg = ((u16::from(g) * alpha + 255 * inv) / 255) as u8;
+            let bb = ((u16::from(b) * alpha + 255 * inv) / 255) as u8;
+            rgb.put_pixel(x, y, image::Rgb([rr, gg, bb]));
+        }
+    }
+    rgb
+}
+
+fn median_corner_rgb(rgb: &image::RgbImage) -> image::Rgb<u8> {
+    let (w, h) = rgb.dimensions();
+    if w == 0 || h == 0 {
+        return image::Rgb([255, 255, 255]);
+    }
+    let corners = [
+        rgb.get_pixel(0, 0).0,
+        rgb.get_pixel(w - 1, 0).0,
+        rgb.get_pixel(0, h - 1).0,
+        rgb.get_pixel(w - 1, h - 1).0,
+    ];
+    let mut rs = [corners[0][0], corners[1][0], corners[2][0], corners[3][0]];
+    let mut gs = [corners[0][1], corners[1][1], corners[2][1], corners[3][1]];
+    let mut bs = [corners[0][2], corners[1][2], corners[2][2], corners[3][2]];
+    rs.sort_unstable();
+    gs.sort_unstable();
+    bs.sort_unstable();
+    image::Rgb([rs[1], gs[1], bs[1]])
+}
+
+fn build_rapidocr_retry_png(
+    img: &image::DynamicImage,
+) -> Result<(Vec<u8>, f32, f32, u32), String> {
+    let orig_w = img.width().max(1);
+    let orig_h = img.height().max(1);
+    let flat = flatten_dynamic_to_rgb(img);
+
+    let max_dim = orig_w.max(orig_h);
+    let (scaled, scaled_w, scaled_h) = if max_dim < 1200 {
+        let factor = (1600.0f32 / max_dim as f32).clamp(1.0, 2.0);
+        let target_w = ((orig_w as f32 * factor).round() as u32).max(1);
+        let target_h = ((orig_h as f32 * factor).round() as u32).max(1);
+        let resized = image::imageops::resize(
+            &flat,
+            target_w,
+            target_h,
+            image::imageops::FilterType::Triangle,
+        );
+        (resized, target_w, target_h)
+    } else {
+        (flat, orig_w, orig_h)
+    };
+
+    let pad: u32 = 32;
+    let bg = median_corner_rgb(&scaled);
+    let mut canvas = image::RgbImage::from_pixel(scaled_w + pad * 2, scaled_h + pad * 2, bg);
+    image::imageops::replace(&mut canvas, &scaled, i64::from(pad), i64::from(pad));
+
+    let mut png_bytes = Vec::with_capacity((canvas.width() * canvas.height()) as usize);
+    let encoder = PngEncoder::new_with_quality(
+        &mut png_bytes,
+        CompressionType::Default,
+        FilterType::Sub,
+    );
+    encoder
+        .write_image(
+            canvas.as_raw(),
+            canvas.width(),
+            canvas.height(),
+            ExtendedColorType::Rgb8,
+        )
+        .map_err(|e| format!("编码 RapidOCR 重试 PNG 失败: {e}"))?;
+
+    let scale_x = scaled_w as f32 / orig_w as f32;
+    let scale_y = scaled_h as f32 / orig_h as f32;
+    Ok((png_bytes, scale_x, scale_y, pad))
+}
+
+fn remap_padded_rapidocr_items(
+    mut items: Vec<RapidOcrItem>,
+    scale_x: f32,
+    scale_y: f32,
+    pad: u32,
+    orig_w: u32,
+    orig_h: u32,
+) -> Vec<RapidOcrItem> {
+    let sx = scale_x.max(0.01);
+    let sy = scale_y.max(0.01);
+    let pad_f = pad as f32;
+    let max_x = orig_w.max(1) as f32;
+    let max_y = orig_h.max(1) as f32;
+    for item in &mut items {
+        for pt in &mut item.box_pts {
+            pt[0] = ((pt[0] - pad_f) / sx).clamp(0.0, max_x);
+            pt[1] = ((pt[1] - pad_f) / sy).clamp(0.0, max_y);
+        }
+    }
+    items
+}
+
 fn ocr_png_sync(
     png_bytes: &[u8],
     lang: &str,
@@ -2333,7 +2468,39 @@ fn ocr_png_sync(
         .ok_or_else(|| "离线 RapidOCR 引擎尚未安装，请先在设置中下载或导入".to_string())?;
 
     let items = run_worker_ocr(&installed, lang, png_bytes)?;
-    Ok(parse_and_layout_rapidocr_result(items, img_w, img_h))
+    let raw_count = items.len();
+    let max_score = items.iter().map(|i| i.score).fold(0.0f32, f32::max);
+    let pass1 = parse_and_layout_rapidocr_result(items, img_w, img_h);
+    if !pass1.1.trim().is_empty() {
+        return Ok(pass1);
+    }
+
+    eprintln!(
+        "[local_ocr] RapidOCR pass 1 empty (raw_items={raw_count}, max_score={max_score:.3}, size={img_w}x{img_h}); retrying preprocessed RGB pass"
+    );
+    if let Ok((retry_png, scale_x, scale_y, pad)) = build_rapidocr_retry_png(&img) {
+        match run_worker_ocr(&installed, lang, &retry_png) {
+            Ok(retry_items) => {
+                let remapped = remap_padded_rapidocr_items(
+                    retry_items,
+                    scale_x,
+                    scale_y,
+                    pad,
+                    img_w,
+                    img_h,
+                );
+                let pass2 = parse_and_layout_rapidocr_result(remapped, img_w, img_h);
+                if !pass2.1.trim().is_empty() {
+                    return Ok(pass2);
+                }
+            }
+            Err(err) => {
+                eprintln!("[local_ocr] RapidOCR retry pass failed: {err}");
+            }
+        }
+    }
+
+    Ok(pass1)
 }
 
 /// Run offline RapidOCR on raw PNG bytes and reconstruct layout blocks.
@@ -2683,6 +2850,103 @@ mod tests {
             .filter(|p| p[0] < 32 && p[1] < 32 && p[2] < 32)
             .count();
         assert!(dark_pixels > 400, "expected crisp glyph pixels, got {dark_pixels}");
+    }
+
+    #[test]
+    fn remaps_padded_upscaled_rapidocr_boxes_to_original_coords() {
+        let items = vec![
+            RapidOcrItem {
+                box_pts: [[32.0, 52.0], [132.0, 52.0], [132.0, 92.0], [32.0, 92.0]],
+                score: 0.95,
+                text: "Hello".into(),
+            },
+            RapidOcrItem {
+                box_pts: [[10.0, 10.0], [500.0, 10.0], [500.0, 300.0], [10.0, 300.0]],
+                score: 0.90,
+                text: "Clamped".into(),
+            },
+        ];
+        let remapped = remap_padded_rapidocr_items(items, 2.0, 2.0, 32, 200, 80);
+        assert_eq!(
+            remapped[0].box_pts,
+            [[0.0, 10.0], [50.0, 10.0], [50.0, 30.0], [0.0, 30.0]]
+        );
+        assert_eq!(
+            remapped[1].box_pts,
+            [[0.0, 0.0], [200.0, 0.0], [200.0, 80.0], [0.0, 80.0]]
+        );
+    }
+
+    #[test]
+    fn relaxed_score_fallback_recovers_moderate_text_while_filtering_low_noise() {
+        // When all items are below 0.45, recover >= 0.30 items if meaningful text >= 2 chars.
+        let low_contrast = vec![
+            RapidOcrItem {
+                box_pts: [[10.0, 10.0], [120.0, 10.0], [120.0, 32.0], [10.0, 32.0]],
+                score: 0.38,
+                text: "Hello".into(),
+            },
+            RapidOcrItem {
+                box_pts: [[10.0, 40.0], [80.0, 40.0], [80.0, 62.0], [10.0, 62.0]],
+                score: 0.25,
+                text: "BAD".into(),
+            },
+        ];
+        let (_lang, text, _blocks) = parse_and_layout_rapidocr_result(low_contrast, 200, 100);
+        assert_eq!(text, "Hello");
+
+        // Single-char relaxed noise must still be suppressed.
+        let single_noise = vec![
+            RapidOcrItem {
+                box_pts: [[10.0, 10.0], [24.0, 10.0], [24.0, 28.0], [10.0, 28.0]],
+                score: 0.35,
+                text: "x".into(),
+            },
+            RapidOcrItem {
+                box_pts: [[30.0, 10.0], [90.0, 10.0], [90.0, 28.0], [30.0, 28.0]],
+                score: 0.20,
+                text: "noise".into(),
+            },
+        ];
+        let (_lang2, empty_text, blocks2) = parse_and_layout_rapidocr_result(single_noise, 200, 100);
+        assert!(empty_text.trim().is_empty());
+        assert!(blocks2.is_empty());
+
+        // Normal >= 0.45 text preserves strict filtering of < 0.45 items.
+        let mixed = vec![
+            RapidOcrItem {
+                box_pts: [[10.0, 10.0], [120.0, 10.0], [120.0, 32.0], [10.0, 32.0]],
+                score: 0.95,
+                text: "Good".into(),
+            },
+            RapidOcrItem {
+                box_pts: [[10.0, 40.0], [120.0, 40.0], [120.0, 62.0], [10.0, 62.0]],
+                score: 0.38,
+                text: "SkipLow".into(),
+            },
+        ];
+        let (_lang3, strict_text, _blocks3) = parse_and_layout_rapidocr_result(mixed, 200, 100);
+        assert_eq!(strict_text, "Good");
+    }
+
+    #[test]
+    fn build_rapidocr_retry_png_produces_valid_rgb_png_with_padding() {
+        let mut rgba = RgbaImage::from_pixel(120, 40, Rgba([240, 240, 240, 255]));
+        rgba.put_pixel(60, 20, Rgba([0, 0, 0, 128]));
+        rgba.put_pixel(10, 10, Rgba([0, 0, 0, 0]));
+        let dyn_img = image::DynamicImage::ImageRgba8(rgba);
+
+        let (png_bytes, scale_x, scale_y, pad) =
+            build_rapidocr_retry_png(&dyn_img).expect("build retry PNG");
+        assert!((scale_x - 2.0).abs() < 1e-4);
+        assert!((scale_y - 2.0).abs() < 1e-4);
+        assert_eq!(pad, 32);
+
+        let decoded = image::load_from_memory(&png_bytes).expect("decode retry PNG");
+        assert_eq!(decoded.color(), image::ColorType::Rgb8);
+        assert_eq!(decoded.width(), 120 * 2 + 64);
+        assert_eq!(decoded.height(), 40 * 2 + 64);
+        assert_eq!(decoded.to_rgb8().get_pixel(0, 0).0, [240, 240, 240]);
     }
 
     #[test]

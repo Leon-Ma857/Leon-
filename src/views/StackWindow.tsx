@@ -48,6 +48,7 @@ import {
   TranslateEngine,
 } from "../types";
 import { AskQuickActionsBar } from "../components/AskQuickActionsBar";
+import { Popconfirm } from "../components/Popconfirm";
 
 const COLLAPSED_SIZE = { width: 236, height: 168 };
 const PREVIEW_SIZE = { width: 820, height: 560 };
@@ -285,6 +286,7 @@ export function StackWindow() {
   const [fullImages, setFullImages] = useState<Record<number, StackItemImageDto>>({});
   const [slide, setSlide] = useState<1 | -1 | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [removingThumbIds, setRemovingThumbIds] = useState<Record<number, true>>({});
   const [tool, setTool] = useState<PreviewTool>("pan");
   const [color, setColor] = useState(PREVIEW_COLORS[0]);
   const [strokeWidth, setStrokeWidth] = useState(4);
@@ -352,6 +354,7 @@ export function StackWindow() {
         setTargetLang(null);
         setViewMode("collapsed");
         setFullImages({});
+        setRemovingThumbIds({});
         setWorkingImage(null);
         setAnnotations([]);
         setUndoStack([]);
@@ -1417,14 +1420,15 @@ export function StackWindow() {
 
       const hintBefore = showHint && activeDrag?.dropSlot === idx;
       const hintAfter = showHint && idx === items.length - 1 && activeDrag?.dropSlot === items.length;
+      const isRemovingThumb = Boolean(removingThumbIds[item.id]);
 
       return (
         <React.Fragment key={item.id}>
           {hintBefore && <span className="stack-drop-hint" aria-hidden="true" />}
           <div
-            className={`stack-thumb-item${isDragging ? " dragging" : ""}`}
+            className={`stack-thumb-item${isDragging ? " dragging" : ""}${isRemovingThumb ? " removing" : ""}`}
             tabIndex={0}
-            aria-label={`截图 #${idx + 1}，可拖拽或按 ${ALT_LABEL}+左右方向键调整顺序`}
+            aria-label={`截图 #${idx + 1}，拖拽或 ${ALT_LABEL}+方向键排序`}
             onPointerDown={(e) => startThumbDrag(e, idx)}
             onKeyDown={(e) => {
               if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
@@ -1442,7 +1446,7 @@ export function StackWindow() {
               }
             }}
             style={rippleStyle}
-            title={`点击预览与编辑，或左右拖拽 / ${ALT_LABEL}+方向键排序`}
+            title={`点击预览 · 拖拽或 ${ALT_LABEL}+方向键排序`}
           >
             <img src={item.thumbDataUrl} alt={item.title} draggable={false} />
             <span className="stack-thumb-num">#{idx + 1}</span>
@@ -1454,18 +1458,19 @@ export function StackWindow() {
                     e.stopPropagation();
                     invoke("pin_stack_item", { id: item.id }).catch((err) => showNotice(String(err)));
                   }}
-                  title="单独贴图到桌面"
+                  title="贴图"
                 >
                   <Pin size={11} />
                 </button>
                 <button
                   type="button"
                   className="stack-thumb-btn danger"
+                  disabled={isRemovingThumb}
                   onClick={(e) => {
                     e.stopPropagation();
-                    invoke("remove_stack_item", { id: item.id }).catch(console.error);
+                    void handleThumbRemove(item.id);
                   }}
-                  title="移出叠堆"
+                  title="移出"
                 >
                   <X size={11} />
                 </button>
@@ -1475,6 +1480,35 @@ export function StackWindow() {
         </React.Fragment>
       );
     });
+  };
+
+  const handleThumbRemove = async (id: number) => {
+    if (removingThumbIds[id]) return;
+    setRemovingThumbIds((prev) => ({ ...prev, [id]: true }));
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!reduced) {
+      await new Promise((resolve) => window.setTimeout(resolve, 185));
+    }
+    try {
+      await invoke("remove_stack_item", { id });
+      setFullImages((images) => {
+        if (!(id in images)) return images;
+        const next = { ...images };
+        delete next[id];
+        return next;
+      });
+    } catch (err) {
+      showNotice(String(err));
+    } finally {
+      setRemovingThumbIds((prev) => {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
   };
 
   const handlePreviewPin = async () => {
@@ -1605,7 +1639,7 @@ export function StackWindow() {
         <div
           className="stack-pile"
           onClick={() => switchViewMode("preview", state.items.length - 1)}
-          title="点击叠层卡片直接进入立体预览与编辑"
+          title="点击预览与编辑"
         >
           <div className="stack-drag-bar" data-tauri-drag-region onClick={(e) => e.stopPropagation()}>
             <span className="stack-badge">
@@ -1621,10 +1655,10 @@ export function StackWindow() {
                 }}
                 title={
                   state.items.length > 1
-                    ? `一键复制全部 ${state.items.length} 张截图（可直接粘贴到微信/文件夹）`
-                    : "一键复制截图"
+                    ? `复制全部 ${state.items.length} 张`
+                    : "复制截图"
                 }
-                aria-label="一键复制全部截图"
+                aria-label="复制全部截图"
               >
                 {copiedKey === "collapsed-copy" ? <Check size={11} /> : <Copy size={11} />}
               </button>
@@ -1635,7 +1669,7 @@ export function StackWindow() {
                   e.stopPropagation();
                   invoke("start_capture", { hideMain: false }).catch((err) => showNotice(String(err)));
                 }}
-                title="继续截图加入叠堆"
+                title="继续截图"
               >
                 <Camera size={11} />
               </button>
@@ -1899,7 +1933,7 @@ export function StackWindow() {
                       type="button"
                       className="stack-preview-edge previous"
                       aria-label="上一张"
-                      title="点击上一张 (←)，按住可拖动预览位置"
+                      title="上一张 (←)"
                       onPointerDown={onPreviewEdgePointerDown}
                       onClick={() => {
                         if (suppressEdgeClickRef.current) {
@@ -1913,7 +1947,7 @@ export function StackWindow() {
                       type="button"
                       className="stack-preview-edge next"
                       aria-label="下一张"
-                      title="点击下一张 (→)，按住可拖动预览位置"
+                      title="下一张 (→)"
                       onPointerDown={onPreviewEdgePointerDown}
                       onClick={() => {
                         if (suppressEdgeClickRef.current) {
@@ -2223,7 +2257,7 @@ export function StackWindow() {
         <header className="result-header" data-tauri-drag-region>
           <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600 }}>
             <Layers size={14} style={{ color: "var(--accent)" }} />
-            <span>截图叠堆 ({state.items.length}/{state.maxStackSize})</span>
+            <span>叠堆 ({state.items.length}/{state.maxStackSize})</span>
           </div>
 
           <div className="icon-actions">
@@ -2231,7 +2265,7 @@ export function StackWindow() {
               type="button"
               className="icon-btn"
               onClick={() => switchViewMode("preview", state.items.length - 1)}
-              title="直接预览与编辑截图"
+              title="预览与编辑"
             >
               <Eye size={14} />
             </button>
@@ -2239,23 +2273,44 @@ export function StackWindow() {
               type="button"
               className="icon-btn"
               onClick={() => invoke("start_capture", { hideMain: false }).catch(console.error)}
-              title="继续截图入堆"
+              title="继续截图"
             >
               <Camera size={14} />
             </button>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => invoke("clear_stack").catch(console.error)}
-              title="清空叠堆"
-            >
-              <Trash2 size={14} />
-            </button>
+            {state.items.length > 1 ? (
+              <Popconfirm
+                message={`清空全部 ${state.items.length} 张截图？`}
+                confirmLabel="清空"
+                onConfirm={() => {
+                  invoke("clear_stack").catch(console.error);
+                }}
+              >
+                {(triggerProps) => (
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="清空叠堆"
+                    {...triggerProps}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </Popconfirm>
+            ) : (
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => invoke("clear_stack").catch(console.error)}
+                title="清空叠堆"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
             <button
               type="button"
               className="icon-btn"
               onClick={() => switchViewMode("collapsed")}
-              title="收起为桌面叠堆"
+              title="收起"
             >
               <Minimize2 size={14} />
             </button>
@@ -2274,28 +2329,28 @@ export function StackWindow() {
             className={`mode-pill ${activeTab === "stitch" ? "active" : ""}`}
             onClick={() => setActiveTab("stitch")}
           >
-            <Columns2 size={12} /> 拼图导出
+            <Columns2 size={12} /> 拼图
           </button>
           <button
             type="button"
             className={`mode-pill ${activeTab === "translate" ? "active" : ""}`}
             onClick={() => switchBatchTab("translate")}
           >
-            <Languages size={12} /> 批量翻译
+            <Languages size={12} /> 翻译
           </button>
           <button
             type="button"
             className={`mode-pill ${activeTab === "ocr" ? "active" : ""}`}
             onClick={() => switchBatchTab("ocr")}
           >
-            <ScanText size={12} /> 批量识字
+            <ScanText size={12} /> 识字
           </button>
           <button
             type="button"
             className={`mode-pill ${activeTab === "ask" ? "active" : ""}`}
             onClick={() => setActiveTab("ask")}
           >
-            <Sparkles size={12} /> 多图问 AI
+            <Sparkles size={12} /> 问 AI
           </button>
         </div>
 
@@ -2305,7 +2360,7 @@ export function StackWindow() {
           {activeTab === "stitch" && (
             <div key="stitch" className="stack-stitch-pane stack-pane-enter">
               <div className="result-section-head">
-                <span>选择拼接布局</span>
+                <span>拼接方向</span>
                 <span>共 {state.items.length} 张</span>
               </div>
               <div className="stack-dir-row">
@@ -2315,7 +2370,7 @@ export function StackWindow() {
                   onClick={() => setDirection("vertical")}
                 >
                   <Rows2 size={15} />
-                  <span>纵向拼接</span>
+                  <span>纵向</span>
                 </button>
                 <button
                   type="button"
@@ -2323,7 +2378,7 @@ export function StackWindow() {
                   onClick={() => setDirection("horizontal")}
                 >
                   <Columns2 size={15} />
-                  <span>横向拼接</span>
+                  <span>横向</span>
                 </button>
                 <button
                   type="button"
@@ -2331,19 +2386,19 @@ export function StackWindow() {
                   onClick={() => setDirection("grid")}
                 >
                   <Grid size={15} />
-                  <span>宫格拼图</span>
+                  <span>宫格</span>
                 </button>
               </div>
 
               <div className="stack-stitch-preview">
                 <div className="result-section-head">
-                  <span>拼图预览</span>
+                  <span>预览</span>
                   <span>
                     {direction === "vertical"
-                      ? "由上到下顺序拼接"
+                      ? "纵向顺序"
                       : direction === "horizontal"
-                        ? "由左到右横向排布"
-                        : "自适应网格宫格"}
+                        ? "横向顺序"
+                        : "自适应宫格"}
                   </span>
                 </div>
                 <div className={`stack-stitch-preview-grid ${direction}`}>
@@ -2358,7 +2413,7 @@ export function StackWindow() {
               <div className="stack-export-actions">
                 <button type="button" className="btn btn-primary" onClick={handleCopyStitched}>
                   {copiedKey === "stitch-copy" ? <Check size={14} /> : <Copy size={14} />}
-                  复制拼接大图
+                  复制拼图
                 </button>
                 <button type="button" className="btn" onClick={handleSaveStitched}>
                   <Download size={14} /> 保存 PNG
@@ -2367,7 +2422,7 @@ export function StackWindow() {
 
               <button type="button" className="btn" style={{ width: "100%" }} onClick={handleCopyAsFiles}>
                 {copiedKey === "files" ? <Check size={14} /> : <Files size={14} />}
-                复制为多张图片文件（可直接粘贴到微信 / 飞书 / 文件夹）
+                复制为图片文件（支持多图粘贴）
               </button>
             </div>
           )}
@@ -2429,11 +2484,7 @@ export function StackWindow() {
                   <>
                     <div className="loading-status" style={{ padding: "8px 0" }}>
                       <Loader2 size={14} className="spin" />
-                      <span>
-                        {streamedIndices.length > 0
-                          ? `正在流式处理 ${state.items.length} 张截图...`
-                          : `正在并发处理 ${state.items.length} 张截图...`}
-                      </span>
+                      <span>正在处理 {state.items.length} 张截图…</span>
                     </div>
                     {streamedIndices.length > 0 && (
                       <div className="batch-item-list">
@@ -2582,7 +2633,7 @@ export function StackWindow() {
                   ) : (
                     <div className="loading-status">
                       <Loader2 size={13} className="spin" />
-                      <span>AI 正在结合全部 {state.items.length} 张图分析...</span>
+                      <span>正在分析 {state.items.length} 张截图…</span>
                     </div>
                   ))}
                 {state.askError && <div className="error-box">{state.askError}</div>}

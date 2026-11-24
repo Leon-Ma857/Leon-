@@ -632,30 +632,30 @@
 
 /* ==================== Dark Mode Theme Support ==================== */
 :root[data-theme="dark"] .ask-actions-bar {
-  background: rgba(19, 19, 21, 0.92);
+  background: rgba(15, 15, 17, 0.92);
 }
 
 :root[data-theme="dark"] .ask-actions-editor {
-  background: rgba(24, 24, 27, 0.98);
+  background: rgba(19, 19, 22, 0.98);
 }
 
 :root[data-theme="dark"] .ask-action-pill {
-  background: #1c1c1e;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  background: #1b1b1f;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.34);
 }
 
 :root[data-theme="dark"] .ask-action-pill:hover:not(:disabled) {
-  background: #2c2c2e;
-  border-color: rgba(255, 255, 255, 0.48);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
+  background: #25252a;
+  border-color: rgba(255, 255, 255, 0.36);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
 :root[data-theme="dark"] .ask-action-add-btn {
-  background: #1c1c1e;
+  background: #1b1b1f;
 }
 
 :root[data-theme="dark"] .ask-action-add-btn:hover {
-  background: #2c2c2e;
+  background: #25252a;
 }
 
 :root[data-theme="dark"] .ask-action-add-btn.active {
@@ -664,21 +664,21 @@
 }
 
 :root[data-theme="dark"] .ask-editor-input {
-  background: #1c1c1e;
+  background: #1b1b1f;
   color: var(--text-main);
 }
 
 :root[data-theme="dark"] .ask-editor-input:focus {
-  background: #242426;
+  background: #222227;
 }
 
 :root[data-theme="dark"] .ask-editor-btn {
-  background: #1c1c1e;
+  background: #1b1b1f;
   color: var(--text-main);
 }
 
 :root[data-theme="dark"] .ask-editor-btn:hover:not(:disabled) {
-  background: #2c2c2e;
+  background: #25252a;
 }
 
 :root[data-theme="dark"] .ask-editor-btn-primary {
@@ -694,7 +694,7 @@
 
 :root[data-theme="dark"] .ask-editor-item-label,
 :root[data-theme="dark"] .ask-settings-pill-preview {
-  background: #1c1c1e;
+  background: #1b1b1f;
 }
 
 :root[data-theme="dark"] .ask-editor-feedback.err {
@@ -708,35 +708,35 @@
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] .ask-actions-bar,
   :root:not([data-theme]) .ask-actions-bar {
-    background: rgba(19, 19, 21, 0.92);
+    background: rgba(15, 15, 17, 0.92);
   }
 
   :root[data-theme="system"] .ask-actions-editor,
   :root:not([data-theme]) .ask-actions-editor {
-    background: rgba(24, 24, 27, 0.98);
+    background: rgba(19, 19, 22, 0.98);
   }
 
   :root[data-theme="system"] .ask-action-pill,
   :root:not([data-theme]) .ask-action-pill {
-    background: #1c1c1e;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    background: #1b1b1f;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.34);
   }
 
   :root[data-theme="system"] .ask-action-pill:hover:not(:disabled),
   :root:not([data-theme]) .ask-action-pill:hover:not(:disabled) {
-    background: #2c2c2e;
-    border-color: rgba(255, 255, 255, 0.48);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
+    background: #25252a;
+    border-color: rgba(255, 255, 255, 0.36);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
   }
 
   :root[data-theme="system"] .ask-action-add-btn,
   :root:not([data-theme]) .ask-action-add-btn {
-    background: #1c1c1e;
+    background: #1b1b1f;
   }
 
   :root[data-theme="system"] .ask-action-add-btn:hover,
   :root:not([data-theme]) .ask-action-add-btn:hover {
-    background: #2c2c2e;
+    background: #25252a;
   }
 
   :root[data-theme="system"] .ask-action-add-btn.active,
@@ -747,24 +747,24 @@
 
   :root[data-theme="system"] .ask-editor-input,
   :root:not([data-theme]) .ask-editor-input {
-    background: #1c1c1e;
+    background: #1b1b1f;
     color: var(--text-main);
   }
 
   :root[data-theme="system"] .ask-editor-input:focus,
   :root:not([data-theme]) .ask-editor-input:focus {
-    background: #242426;
+    background: #222227;
   }
 
   :root[data-theme="system"] .ask-editor-btn,
   :root:not([data-theme]) .ask-editor-btn {
-    background: #1c1c1e;
+    background: #1b1b1f;
     color: var(--text-main);
   }
 
   :root[data-theme="system"] .ask-editor-btn:hover:not(:disabled),
   :root:not([data-theme]) .ask-editor-btn:hover:not(:disabled) {
-    background: #2c2c2e;
+    background: #25252a;
   }
 
   :root[data-theme="system"] .ask-editor-btn-primary,
@@ -784,7 +784,7 @@
   :root[data-theme="system"] .ask-settings-pill-preview,
   :root:not([data-theme]) .ask-editor-item-label,
   :root:not([data-theme]) .ask-settings-pill-preview {
-    background: #1c1c1e;
+    background: #1b1b1f;
   }
 
   :root[data-theme="system"] .ask-editor-feedback.err,

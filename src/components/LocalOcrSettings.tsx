@@ -20,6 +20,7 @@ import {
 } from "../types";
 import { listenToWindow } from "../utils/windowEvents";
 import { IS_MAC } from "../utils/platform";
+import { Popconfirm } from "./Popconfirm";
 import "../styles/local-ocr.css";
 
 export interface LocalOcrSettingsProps {
@@ -40,23 +41,23 @@ const ENGINE_MODES: {
 }[] = [
   {
     id: "auto",
-    label: "智能自动",
-    desc: "已安装 RapidOCR 时优先本地 ONNX 高精度识字，未安装时自动回退 Windows OCR。",
+    label: "自动",
+    desc: "优先 RapidOCR，未安装时回退系统 OCR。",
   },
   {
     id: "rapidocr",
-    label: "优先 RapidOCR（完全离线）",
-    desc: "强制使用本地 RapidOCR ONNX 引擎提取文字，截图无需联网或上传云端。",
+    label: "RapidOCR",
+    desc: "仅使用本地 RapidOCR 离线识字，不上传云端。",
   },
   {
     id: "windows",
-    label: "仅 Windows OCR",
-    desc: "始终使用系统内置 Windows Media OCR，不启动本地 RapidOCR 子进程。",
+    label: "系统 OCR",
+    desc: "仅使用 Windows 内置识字。",
   },
 ];
 
 const OCR_LANG_OPTIONS: { id: LocalOcrLang; label: string }[] = [
-  { id: "ch", label: "中英混排 (PP-OCRv4)" },
+  { id: "ch", label: "中英混排" },
   { id: "cht", label: "繁体中文" },
   { id: "en", label: "English" },
   { id: "jp", label: "日本語" },
@@ -252,8 +253,8 @@ export function LocalOcrSettings({
     return (
       <section className="card local-ocr-card">
         <div className="card-title">
-          <span>系统内置 OCR 引擎（Apple Vision）</span>
-          <span className="card-subtitle">macOS 原生神经网络识字 · 免下载离线运行</span>
+          <span>本地识字</span>
+          <span className="card-subtitle">Apple Vision · 离线运行</span>
         </div>
 
         <div className="local-ocr-status-box">
@@ -262,10 +263,10 @@ export function LocalOcrSettings({
               <div className="local-ocr-installed-meta">
                 <span className="local-ocr-ready-badge">
                   <CheckCircle2 size={13} />
-                  已就绪 · Apple Vision
+                  已就绪
                 </span>
                 <span className="local-ocr-disk-meta">
-                  支持中 / 英 / 日 / 韩 自动混排识别
+                  中 / 英 / 日 / 韩混排
                 </span>
               </div>
               <div className="local-ocr-installed-actions">
@@ -276,12 +277,9 @@ export function LocalOcrSettings({
                   disabled={actionBusy !== null}
                 >
                   <Play size={12} />
-                  {actionBusy === "test" ? "识别中…" : "测试系统识字"}
+                  {actionBusy === "test" ? "识别中…" : "测试"}
                 </button>
               </div>
-            </div>
-            <div className="local-ocr-path">
-              由 macOS 系统级 Vision 框架驱动（VNRecognizeTextRequest），截图识字与离线翻译全程在本地完成。
             </div>
             {testOutput && (
               <div className="local-ocr-test-result">{testOutput}</div>
@@ -295,12 +293,12 @@ export function LocalOcrSettings({
   return (
     <section className="card local-ocr-card">
       <div className="card-title">
-        <span>离线高精度 OCR 引擎（RapidOCR ONNX）</span>
-        <span className="card-subtitle">PaddleOCR 本地推理 · 表格与代码增强</span>
+        <span>本地识字</span>
+        <span className="card-subtitle">RapidOCR 离线引擎</span>
       </div>
 
       <div className="field">
-        <label>本地 OCR 识别策略</label>
+        <label>识字引擎</label>
         <div className="chip-row local-ocr-mode-row">
           {ENGINE_MODES.map((mode) => (
             <button
@@ -320,7 +318,7 @@ export function LocalOcrSettings({
         {loadingStatus && !status ? (
           <div className="local-ocr-loading-row">
             <RefreshCw size={14} className="spin" />
-            <span>正在检测本机 RapidOCR 引擎状态…</span>
+            <span>正在检测引擎状态…</span>
           </div>
         ) : busy ? (
           <div className="local-ocr-busy" role="status" aria-live="polite">
@@ -380,29 +378,37 @@ export function LocalOcrSettings({
                   disabled={actionBusy !== null}
                 >
                   <Play size={12} />
-                  {actionBusy === "test" ? "识别中…" : "测试离线识字"}
+                  {actionBusy === "test" ? "识别中…" : "测试"}
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-sm local-ocr-danger-btn"
-                  onClick={handleUninstall}
-                  disabled={actionBusy !== null}
+                <Popconfirm
+                  message="卸载离线识字引擎并释放空间？"
+                  confirmLabel="卸载"
+                  onConfirm={handleUninstall}
                 >
-                  <Trash2 size={12} />
-                  {actionBusy === "uninstall" ? "卸载中…" : "卸载释放空间"}
-                </button>
+                  {(triggerProps) => (
+                    <button
+                      type="button"
+                      className="btn btn-sm local-ocr-danger-btn"
+                      disabled={actionBusy !== null}
+                      {...triggerProps}
+                    >
+                      <Trash2 size={12} />
+                      {actionBusy === "uninstall" ? "卸载中…" : "卸载"}
+                    </button>
+                  )}
+                </Popconfirm>
               </div>
             </div>
 
             {status.installDir && (
               <div className="local-ocr-path" title={status.installDir}>
-                安装目录：{status.installDir}
+                目录：{status.installDir}
               </div>
             )}
 
             <div className="local-ocr-langs">
               <div className="local-ocr-langs-label">
-                离线识别语言模型（点击切换，保存设置后生效）
+                识别语言（保存后生效）
               </div>
               <div className="chip-row local-ocr-lang-row">
                 {OCR_LANG_OPTIONS.map((item) => {
@@ -415,8 +421,8 @@ export function LocalOcrSettings({
                       disabled={!available}
                       title={
                         available
-                          ? `使用 ${item.label} 模型`
-                          : `当前安装的引擎包中未包含 ${item.label} 模型`
+                          ? `使用 ${item.label}`
+                          : `当前引擎包不含 ${item.label}`
                       }
                       onClick={() => onChangeOcrLang(item.id)}
                     >
@@ -434,7 +440,7 @@ export function LocalOcrSettings({
         ) : (
           <div className="local-ocr-uninstalled">
             <div className="local-ocr-uninstalled-desc">
-              尚未安装 RapidOCR 离线引擎。按需下载约 70 MB（官方源自动校验 SHA-256，解压即用，闲置 5 分钟自动释放内存）。
+              未安装离线引擎（约 70 MB），下载后完全本地运行。
             </div>
             <div className="local-ocr-uninstalled-actions">
               <button
@@ -444,7 +450,7 @@ export function LocalOcrSettings({
                 disabled={actionBusy !== null}
               >
                 <Download size={14} />
-                一键下载安装 (~70 MB)
+                下载引擎 (~70 MB)
               </button>
               <button
                 type="button"
@@ -453,7 +459,7 @@ export function LocalOcrSettings({
                 disabled={actionBusy !== null}
               >
                 <FolderUp size={14} />
-                导入本地 .7z 包
+                导入本地包
               </button>
             </div>
           </div>
@@ -474,22 +480,20 @@ export function LocalOcrSettings({
           onClick={() => setShowMirror((v) => !v)}
         >
           {showMirror ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <span>高级选项：自定义引擎包下载镜像</span>
+          <span>自定义下载镜像</span>
         </button>
 
         {showMirror && (
           <div className="field local-ocr-mirror-field">
-            <label>
-              自定义引擎包下载镜像（可选，留空走 GitHub 官方源并自动应用上方代理）
-            </label>
+            <label>镜像地址（可选，留空走官方源）</label>
             <input
               className="input"
               value={downloadUrl}
               onChange={(e) => onChangeDownloadUrl(e.target.value)}
-              placeholder="留空使用官方 GitHub Release (.7z)，或填写 HTTPS 镜像地址"
+              placeholder="留空使用官方源，或填写 HTTPS .7z 镜像地址"
             />
             <small>
-              仅支持 HTTPS 地址；使用 GitHub 官方源时强制校验 SHA-256 完整性，并自动沿用“网络代理与更新源”中的代理配置。
+              仅支持 HTTPS；官方源强制校验 SHA-256，并自动应用上方代理。
             </small>
           </div>
         )}

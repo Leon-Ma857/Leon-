@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent } from "react";
 import { Check, ChevronDown, ChevronUp, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { AskQuickAction, DEFAULT_ASK_QUICK_ACTIONS } from "../types";
 import { MOD_LABEL } from "../utils/platform";
+import { Popconfirm } from "./Popconfirm";
 import "../styles/ask-actions.css";
 
 const MAX_ASK_ACTIONS = 20;
@@ -85,7 +86,7 @@ export function AskActionsSettings({ actions, onChange }: AskActionsSettingsProp
     );
     onChange(next);
     cancelEdit();
-    setNotice("已更新预设，点击底部「保存设置」即可同步至所有窗口");
+    setNotice("已更新，保存设置后生效");
   };
 
   const moveAction = (index: number, delta: -1 | 1) => {
@@ -153,7 +154,7 @@ export function AskActionsSettings({ actions, onChange }: AskActionsSettingsProp
     cancelEdit();
     setAddError(null);
     onChange(DEFAULT_ASK_QUICK_ACTIONS.map((item) => ({ ...item })));
-    setNotice("已恢复默认预设，点击底部「保存设置」即可生效");
+    setNotice("已恢复默认，保存后生效");
   };
 
   const handleEditInputKeyDown = (index: number, e: KeyboardEvent<HTMLInputElement>) => {
@@ -194,28 +195,37 @@ export function AskActionsSettings({ actions, onChange }: AskActionsSettingsProp
     <section className="card ask-actions-settings">
       <div className="card-title ask-settings-header">
         <div className="ask-settings-heading">
-          <span>问 AI 快捷动作（Prompt 预设）</span>
-          <span className="card-subtitle">展示在所有「问 AI」输入框上方，点击即可一键流式提问</span>
+          <span>快捷指令</span>
+          <span className="card-subtitle">显示在「问 AI」输入框上方，点击一键提问</span>
         </div>
         <div className="ask-settings-header-actions">
           <span className="ask-settings-count">
             {safeActions.length} / {MAX_ASK_ACTIONS}
           </span>
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={handleResetDefaults}
-            title="恢复 Luma 内置默认预设"
+          <Popconfirm
+            message="恢复为默认快捷指令？"
+            confirmLabel="恢复"
+            danger={false}
+            onConfirm={handleResetDefaults}
           >
-            <RotateCcw size={12} /> 恢复默认预设
-          </button>
+            {(triggerProps) => (
+              <button
+                type="button"
+                className="btn btn-sm"
+                title="恢复默认快捷指令"
+                {...triggerProps}
+              >
+                <RotateCcw size={12} /> 恢复默认
+              </button>
+            )}
+          </Popconfirm>
         </div>
       </div>
 
       <div className="ask-settings-list">
         {safeActions.length === 0 ? (
           <div className="ask-settings-empty">
-            还没有配置快捷动作，可在下方添加自定义预设或点击右上角「恢复默认预设」。
+            暂无快捷指令，可在下方添加或恢复默认。
           </div>
         ) : (
           safeActions.map((action, index) => {
@@ -345,9 +355,9 @@ export function AskActionsSettings({ actions, onChange }: AskActionsSettingsProp
 
       <div className="ask-settings-add-box">
         <div className="ask-settings-add-head">
-          <span>新增快捷动作</span>
+          <span>新增指令</span>
           <span className="ask-settings-char-count">
-            简称 {charLength(newLabel)}/{MAX_LABEL_LENGTH}
+            {charLength(newLabel)}/{MAX_LABEL_LENGTH}
           </span>
         </div>
 
@@ -362,7 +372,7 @@ export function AskActionsSettings({ actions, onChange }: AskActionsSettingsProp
               if (addError) setAddError(null);
             }}
             onKeyDown={handleAddInputKeyDown}
-            placeholder="简称，如：转 CSV / 提取待办（最多 24 字）"
+            placeholder="名称，如：转 CSV / 提取待办"
           />
           <textarea
             className="textarea"
@@ -374,7 +384,7 @@ export function AskActionsSettings({ actions, onChange }: AskActionsSettingsProp
               if (addError) setAddError(null);
             }}
             onKeyDown={handleAddTextareaKeyDown}
-            placeholder="完整提示词，例如：请将图片中的表格数据提取并输出为标准 CSV 代码块..."
+            placeholder="发送给 AI 的提示词…"
           />
         </div>
 
@@ -384,13 +394,13 @@ export function AskActionsSettings({ actions, onChange }: AskActionsSettingsProp
               <span className="ask-settings-hint err">{addError}</span>
             ) : isFull ? (
               <span className="ask-settings-hint warn">
-                已达上限（{MAX_ASK_ACTIONS}/{MAX_ASK_ACTIONS}），删除任意预设后可继续添加
+                已达上限（{MAX_ASK_ACTIONS}/{MAX_ASK_ACTIONS}）
               </span>
             ) : notice ? (
               <span className="ask-settings-hint ok">{notice}</span>
             ) : (
               <span className="ask-settings-hint">
-                提示：保存设置后将同步更新至浮窗、划词/截图侧栏与桌面叠堆
+                保存后同步到所有窗口
               </span>
             )}
           </div>
@@ -400,7 +410,7 @@ export function AskActionsSettings({ actions, onChange }: AskActionsSettingsProp
             onClick={handleAdd}
             disabled={isFull}
           >
-            <Plus size={13} /> 添加快捷动作
+            <Plus size={13} /> 添加
           </button>
         </div>
       </div>
