@@ -55,9 +55,9 @@ import { AskQuickActionsBar } from "../components/AskQuickActionsBar";
 import { Popconfirm } from "../components/Popconfirm";
 import { SlidingSegmented } from "../components/SlidingSegmented";
 
-const COLLAPSED_SIZE = { width: 316, height: 214 };
+const COLLAPSED_SIZE = { width: 232, height: 156 };
 const PREVIEW_SIZE = { width: 820, height: 560 };
-const EXPANDED_SIZE = { width: 486, height: 560 };
+const EXPANDED_SIZE = { width: 416, height: 462 };
 const STACK_SIZES = { collapsed: COLLAPSED_SIZE, preview: PREVIEW_SIZE, workspace: EXPANDED_SIZE };
 const STACK_MOTION = { duration: 285, easing: "cubic-bezier(0.23, 0.65, 0.32, 1)" };
 const DELETE_STYLE_STORAGE_KEY = "luma.stackDeleteStyle";
@@ -2243,7 +2243,7 @@ export function StackWindow() {
               );
             }
           }}
-          title={isExpanded ? "点击收起叠堆浮层" : "悬停物理扇开 · 点击展开叠堆浮层"}
+          title={isExpanded ? "点击收起叠堆浮层" : "点击展开叠堆浮层"}
         >
           {visible.map((item, idx) => {
             const offset = visible.length - 1 - idx;
@@ -2258,12 +2258,9 @@ export function StackWindow() {
                   className={`corner-stack-card back ${layerClass}`}
                   aria-hidden="true"
                 >
-                  <div className="corner-back-head">
-                    <span className="corner-back-num">#{itemNum}</span>
-                    <span className="corner-back-title">{item.title}</span>
-                  </div>
-                  <div className="corner-back-thumb">
+                  <div className="corner-card-media">
                     <img src={item.thumbDataUrl} alt={item.title} draggable={false} />
+                    <span className="corner-back-num">#{itemNum}</span>
                   </div>
                 </div>
               );
@@ -2271,37 +2268,28 @@ export function StackWindow() {
 
             return (
               <div key={item.id} className="corner-stack-card front l1">
-                <div className="corner-card-head">
-                  <div className="corner-card-toggle">
-                    <span
-                      className="corner-drag-grip"
-                      data-tauri-drag-region
-                      onClick={(e) => e.stopPropagation()}
-                      title="按住拖动叠堆窗口位置"
-                    >
-                      <GripVertical size={12} />
-                    </span>
-                    <span className="corner-card-title">收起 / 展开</span>
-                    <span className="corner-card-chevron" aria-hidden="true">
-                      {isExpanded ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
-                    </span>
-                  </div>
+                <div className="corner-card-media">
+                  <img src={item.thumbDataUrl} alt={item.title} draggable={false} />
+
+                  <span
+                    className="corner-drag-grip"
+                    data-tauri-drag-region
+                    onClick={(e) => e.stopPropagation()}
+                    title="按住拖动叠堆窗口位置"
+                  >
+                    <GripVertical size={9} />
+                  </span>
+
                   <span className="stack-slot-badge" aria-label={`${total} / ${state.maxStackSize}`}>
                     <span key={countRollKey} className="slot-digit in">
                       {total}
                     </span>
                     <span className="slot-sep">/{state.maxStackSize}</span>
+                    <span className="corner-badge-chevron" aria-hidden="true">
+                      {isExpanded ? <ChevronDown size={8} /> : <ChevronUp size={8} />}
+                    </span>
                   </span>
-                </div>
 
-                <div className="corner-card-preview">
-                  <img src={item.thumbDataUrl} alt={item.title} draggable={false} />
-                </div>
-
-                <div className="corner-card-foot">
-                  <span className="corner-card-hint">
-                    {isExpanded ? "点击收起浮层" : "悬停物理扇开"}
-                  </span>
                   <div
                     className="corner-card-micro-actions"
                     onClick={(e) => e.stopPropagation()}
@@ -2313,7 +2301,7 @@ export function StackWindow() {
                       title={total > 1 ? `复制全部 ${total} 张` : "复制截图"}
                       aria-label="复制全部截图"
                     >
-                      {copiedKey === "collapsed-copy" ? <Check size={10} /> : <Copy size={10} />}
+                      {copiedKey === "collapsed-copy" ? <Check size={9} /> : <Copy size={9} />}
                     </button>
                     <button
                       type="button"
@@ -2326,7 +2314,7 @@ export function StackWindow() {
                       title="继续截图"
                       aria-label="继续截图"
                     >
-                      <Camera size={10} />
+                      <Camera size={9} />
                     </button>
                     <button
                       type="button"
@@ -2335,7 +2323,7 @@ export function StackWindow() {
                       title="清空叠堆"
                       aria-label="清空叠堆"
                     >
-                      <X size={10} />
+                      <X size={9} />
                     </button>
                   </div>
                 </div>

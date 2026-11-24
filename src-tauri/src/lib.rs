@@ -781,7 +781,7 @@ fn keep_stack_region_on_screen(win: &tauri::WebviewWindow, extent: (f64, f64)) -
     Ok(())
 }
 
-const STACK_COLLAPSED_EXTENT: (f64, f64) = (316.0, 214.0);
+const STACK_COLLAPSED_EXTENT: (f64, f64) = (232.0, 156.0);
 
 fn position_stack_bottom_right(app: &AppHandle, stack: &tauri::WebviewWindow) {
     #[cfg(windows)]
