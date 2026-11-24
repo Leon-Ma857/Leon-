@@ -9,6 +9,8 @@
     "allow-stack-frame-ready",
     "allow-get-stack-state",
     "allow-remove-stack-item",
+    "allow-restore-last-removed-stack-item",
+    "allow-dismiss-stack-undo",
     "allow-reorder-stack-items",
     "allow-clear-stack",
     "allow-pin-stack-item",

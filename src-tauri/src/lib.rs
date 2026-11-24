@@ -188,6 +188,9 @@ pub struct StackViewState {
     pub batch_elapsed_ms: u64,
     pub target_lang: String,
     pub engine: String,
+    pub can_undo_remove: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_removed_title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub landing_capture_id: Option<u64>,
 }
@@ -256,6 +259,8 @@ pub struct AppState {
     pub overlay_analysis_state: OverlayAnalysisState,
     // Apple-style floating stack
     pub staged_stack: Vec<StagedImage>,
+    pub removed_stack_history: Vec<(usize, StagedImage)>,
+    pub stack_undo_hide_gen: u64,
     pub next_stack_id: u64,
     stack_extent: (f64, f64),
     stack_frame_waiter: Option<(u64, tokio::sync::oneshot::Sender<()>)>,
@@ -443,6 +448,11 @@ fn build_stack_view_state(guard: &AppState) -> StackViewState {
         batch_elapsed_ms: guard.stack_batch_elapsed_ms,
         target_lang: guard.config.target_lang.clone(),
         engine: guard.config.translate_engine.clone(),
+        can_undo_remove: !guard.removed_stack_history.is_empty(),
+        last_removed_title: guard
+            .removed_stack_history
+            .last()
+            .map(|(_, item)| item.title.clone()),
         landing_capture_id: None,
     }
 }
@@ -771,11 +781,13 @@ fn keep_stack_region_on_screen(win: &tauri::WebviewWindow, extent: (f64, f64)) -
     Ok(())
 }
 
+const STACK_COLLAPSED_EXTENT: (f64, f64) = (316.0, 214.0);
+
 fn position_stack_bottom_right(app: &AppHandle, stack: &tauri::WebviewWindow) {
     #[cfg(windows)]
     let (width_logical, height_logical) = (820.0, 560.0);
     #[cfg(not(windows))]
-    let (width_logical, height_logical) = (236.0, 168.0);
+    let (width_logical, height_logical) = STACK_COLLAPSED_EXTENT;
     let last_rect = app
         .state::<Mutex<AppState>>()
         .lock()
@@ -794,7 +806,7 @@ fn position_stack_bottom_right(app: &AppHandle, stack: &tauri::WebviewWindow) {
     let _ = set_window_bounds(stack, x, y, w_phys, h_phys);
     #[cfg(windows)]
     {
-        let extent = (236.0, 168.0);
+        let extent = STACK_COLLAPSED_EXTENT;
         if let Ok(mut state) = app.state::<Mutex<AppState>>().lock() {
             state.stack_extent = extent;
         }
@@ -1001,6 +1013,8 @@ async fn save_png_with_dialog(png_bytes: Vec<u8>, prefix: &str) -> Result<bool, 
 
 fn clear_stack_state_locked(guard: &mut AppState) {
     guard.staged_stack.clear();
+    guard.removed_stack_history.clear();
+    guard.stack_undo_hide_gen = guard.stack_undo_hide_gen.wrapping_add(1);
     reset_stack_analysis(guard);
 }
 
@@ -4287,6 +4301,7 @@ async fn stage_regions(
         }
         check_capacity(&guard)?;
         let was_empty = guard.staged_stack.is_empty();
+        guard.stack_undo_hide_gen = guard.stack_undo_hide_gen.wrapping_add(1);
         for (label, crop, thumb_data_url) in crops {
             guard.next_stack_id += 1;
             let id = guard.next_stack_id;
@@ -4389,7 +4404,107 @@ fn remove_exported_items(app: &AppHandle, state: &Mutex<AppState>, ids: &[u64]) 
 
 #[tauri::command]
 fn remove_stack_item(app: AppHandle, state: State<'_, Mutex<AppState>>, id: u64) -> Result<(), String> {
-    remove_exported_items(&app, &state, &[id])
+    let (stack_state, empty_hide_gen) = {
+        let mut guard = state.lock().map_err(|_| "状态锁异常".to_string())?;
+        let Some(pos) = guard.staged_stack.iter().position(|item| item.id == id) else {
+            return Ok(());
+        };
+        let removed = guard.staged_stack.remove(pos);
+        guard.removed_stack_history.push((pos, removed));
+        if guard.removed_stack_history.len() > 8 {
+            guard.removed_stack_history.remove(0);
+        }
+        reset_stack_analysis(&mut guard);
+        guard.stack_undo_hide_gen = guard.stack_undo_hide_gen.wrapping_add(1);
+        let hide_gen = if guard.staged_stack.is_empty() {
+            Some(guard.stack_undo_hide_gen)
+        } else {
+            None
+        };
+        (build_stack_view_state(&guard), hide_gen)
+    };
+    emit_stack_update(&app, &stack_state);
+    if let Some(hide_gen) = empty_hide_gen {
+        let app_bg = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(5500)).await;
+            let should_hide = app_bg
+                .state::<Mutex<AppState>>()
+                .lock()
+                .map(|mut guard| {
+                    if guard.stack_undo_hide_gen == hide_gen && guard.staged_stack.is_empty() {
+                        guard.removed_stack_history.clear();
+                        true
+                    } else {
+                        false
+                    }
+                })
+                .unwrap_or(false);
+            if should_hide {
+                let app_ui = app_bg.clone();
+                post_to_ui(&app_bg, move || {
+                    if let Some(win) = app_ui.get_webview_window("stack") {
+                        let _ = win.hide();
+                    }
+                });
+            }
+        });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn restore_last_removed_stack_item(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Option<u64>, String> {
+    let (stack_state, restored_id, was_empty) = {
+        let mut guard = state.lock().map_err(|_| "状态锁异常".to_string())?;
+        let Some((orig_idx, item)) = guard.removed_stack_history.pop() else {
+            return Ok(None);
+        };
+        let max_size = guard.config.max_stack_size.clamp(2, 12);
+        if guard.staged_stack.len() >= max_size {
+            guard.removed_stack_history.push((orig_idx, item));
+            return Err(format!("叠堆已达上限（{} 张），无法撤销恢复", max_size));
+        }
+        let was_empty = guard.staged_stack.is_empty();
+        let restored_id = item.id;
+        let insert_idx = orig_idx.min(guard.staged_stack.len());
+        guard.staged_stack.insert(insert_idx, item);
+        guard.stack_undo_hide_gen = guard.stack_undo_hide_gen.wrapping_add(1);
+        reset_stack_analysis(&mut guard);
+        (build_stack_view_state(&guard), restored_id, was_empty)
+    };
+    let app_ui = app.clone();
+    post_to_ui(&app, move || {
+        if let Some(stack) = app_ui.get_webview_window("stack") {
+            if was_empty {
+                let _ = stack.show();
+            }
+            dispatch_window_event(&stack, "stack:updated", &stack_state);
+        }
+    });
+    Ok(Some(restored_id))
+}
+
+#[tauri::command]
+fn dismiss_stack_undo(app: AppHandle, state: State<'_, Mutex<AppState>>) -> Result<(), String> {
+    let should_hide = {
+        let mut guard = state.lock().map_err(|_| "状态锁异常".to_string())?;
+        guard.removed_stack_history.clear();
+        guard.stack_undo_hide_gen = guard.stack_undo_hide_gen.wrapping_add(1);
+        guard.staged_stack.is_empty()
+    };
+    if should_hide {
+        let app_ui = app.clone();
+        post_to_ui(&app, move || {
+            if let Some(win) = app_ui.get_webview_window("stack") {
+                let _ = win.hide();
+            }
+        });
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -4611,6 +4726,7 @@ async fn start_scroll_capture(
     let (stack_state, was_empty) = {
         let mut guard = state.lock().map_err(|_| "状态锁异常".to_string())?;
         let was_empty = guard.staged_stack.is_empty();
+        guard.stack_undo_hide_gen = guard.stack_undo_hide_gen.wrapping_add(1);
         let max_size = guard.config.max_stack_size.clamp(2, 12);
         if guard.staged_stack.len() >= max_size {
             guard.staged_stack.remove(0);
@@ -5416,8 +5532,10 @@ pub fn run() {
             overlay_job_id: 0,
             overlay_analysis_state: OverlayAnalysisState::Idle,
             staged_stack: Vec::new(),
+            removed_stack_history: Vec::new(),
+            stack_undo_hide_gen: 0,
             next_stack_id: 0,
-            stack_extent: (236.0, 168.0),
+            stack_extent: STACK_COLLAPSED_EXTENT,
             stack_frame_waiter: None,
             stack_ask_messages: Vec::new(),
             stack_ask_loading: false,
@@ -5812,6 +5930,8 @@ pub fn run() {
             finish_stack_handoff,
             get_stack_state,
             remove_stack_item,
+            restore_last_removed_stack_item,
+            dismiss_stack_undo,
             reorder_stack_items,
             clear_stack,
             pin_stack_item,

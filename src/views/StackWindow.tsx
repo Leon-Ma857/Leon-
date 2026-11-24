@@ -8,6 +8,8 @@ import {
   ArrowUpRight,
   Camera,
   Check,
+  ChevronDown,
+  ChevronUp,
   Circle,
   Columns2,
   Copy,
@@ -22,6 +24,7 @@ import {
   Hand,
   Languages,
   Layers,
+  ListOrdered,
   Loader2,
   Minimize2,
   Pencil,
@@ -36,6 +39,7 @@ import {
   Trash2,
   Type,
   Undo2,
+  Wand2,
   X,
 } from "lucide-react";
 import {
@@ -51,11 +55,23 @@ import { AskQuickActionsBar } from "../components/AskQuickActionsBar";
 import { Popconfirm } from "../components/Popconfirm";
 import { SlidingSegmented } from "../components/SlidingSegmented";
 
-const COLLAPSED_SIZE = { width: 236, height: 168 };
+const COLLAPSED_SIZE = { width: 316, height: 214 };
 const PREVIEW_SIZE = { width: 820, height: 560 };
-const EXPANDED_SIZE = { width: 472, height: 560 };
+const EXPANDED_SIZE = { width: 486, height: 560 };
 const STACK_SIZES = { collapsed: COLLAPSED_SIZE, preview: PREVIEW_SIZE, workspace: EXPANDED_SIZE };
 const STACK_MOTION = { duration: 285, easing: "cubic-bezier(0.23, 0.65, 0.32, 1)" };
+const DELETE_STYLE_STORAGE_KEY = "luma.stackDeleteStyle";
+
+type StackWorkspaceTab = "cards" | "stitch" | "translate" | "ocr" | "ask";
+type StackDeleteStyle = "peel" | "blocks";
+
+function readStoredDeleteStyle(): StackDeleteStyle {
+  try {
+    return window.localStorage.getItem(DELETE_STYLE_STORAGE_KEY) === "blocks" ? "blocks" : "peel";
+  } catch {
+    return "peel";
+  }
+}
 
 function waitForStackViewport({ width, height }: typeof COLLAPSED_SIZE) {
   // At fractional DPI a rounded native dimension can be one CSS pixel smaller.
@@ -262,7 +278,8 @@ export function StackWindow() {
   } | null>(null);
   const [viewMode, setViewMode] = useState<StackViewMode>("collapsed");
   const [leavingMode, setLeavingMode] = useState<StackViewMode | null>(null);
-  const [activeTab, setActiveTab] = useState<"stitch" | "translate" | "ocr" | "ask">("stitch");
+  const [activeTab, setActiveTab] = useState<StackWorkspaceTab>("cards");
+  const [deleteStyle, setDeleteStyle] = useState<StackDeleteStyle>(readStoredDeleteStyle);
   const [direction, setDirection] = useState<StitchDirection>("vertical");
   const [engineChoice, setEngine] = useState<TranslateEngine | null>(null);
   const [targetLangChoice, setTargetLang] = useState<string | null>(null);
@@ -270,6 +287,8 @@ export function StackWindow() {
   const targetLang = targetLangChoice ?? state?.targetLang ?? "简体中文";
   const [askInput, setAskInput] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [undoToast, setUndoToast] = useState<{ title: string; indexLabel: string } | null>(null);
+  const [undoRestoring, setUndoRestoring] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [qrResults, setQrResults] = useState<string[] | null>(null);
   const [dragReorder, setDragReorder] = useState<{
@@ -279,19 +298,39 @@ export function StackWindow() {
     dy: number;
     active: boolean;
   } | null>(null);
+  const [verticalDrag, setVerticalDrag] = useState<{
+    fromIdx: number;
+    dropSlot: number;
+    dy: number;
+    lineTop: number;
+    active: boolean;
+  } | null>(null);
   const thumbStripRef = useRef<HTMLDivElement | null>(null);
+  const dragListRef = useRef<HTMLDivElement | null>(null);
   const suppressEdgeClickRef = useRef(false);
 
-  // Direct card-stack preview state
+  // Corner stack catch-bounce & slot-digit roll state
+  const [catchBounce, setCatchBounce] = useState(false);
+  const [countRollKey, setCountRollKey] = useState(0);
+  const prevCountRef = useRef<number | null>(null);
+  const catchBounceTimerRef = useRef<number | null>(null);
+
+  // Direct card-stack preview & exit/restore animation state
   const [activeIndex, setActiveIndex] = useState(0);
   const [fullImages, setFullImages] = useState<Record<number, StackItemImageDto>>({});
   const [slide, setSlide] = useState<1 | -1 | null>(null);
   const [removing, setRemoving] = useState(false);
-  const [removingThumbIds, setRemovingThumbIds] = useState<Record<number, true>>({});
+  const [removingThumbIds, setRemovingThumbIds] = useState<Record<number, StackDeleteStyle>>({});
   const [nudgeThumbIds, setNudgeThumbIds] = useState<Record<number, true>>({});
   const [justDroppedId, setJustDroppedId] = useState<number | null>(null);
+  const [justRestoredId, setJustRestoredId] = useState<number | null>(null);
   const dropSettleTimerRef = useRef<number | null>(null);
   const nudgeTimerRef = useRef<number | null>(null);
+  const restoreTimerRef = useRef<number | null>(null);
+  const undoToastTimerRef = useRef<number | null>(null);
+  const undoToastHoveredRef = useRef(false);
+  const stateRef = useRef<StackViewState | null>(null);
+  stateRef.current = state;
   const [tool, setTool] = useState<PreviewTool>("pan");
   const [color, setColor] = useState(PREVIEW_COLORS[0]);
   const [strokeWidth, setStrokeWidth] = useState(4);
@@ -315,7 +354,7 @@ export function StackWindow() {
   const textInputRef = useRef<HTMLTextAreaElement | null>(null);
   const backdropPressRef = useRef<{ x: number; y: number } | null>(null);
   const suppressBlurCollapseRef = useRef(false);
-  const switchViewModeRef = useRef<(nextMode: StackViewMode, initialIndex?: number, targetTab?: "stitch" | "translate" | "ocr" | "ask") => Promise<void>>(async () => {});
+  const switchViewModeRef = useRef<(nextMode: StackViewMode, initialIndex?: number, targetTab?: StackWorkspaceTab) => Promise<void>>(async () => {});
   const saveInFlight = useRef<Promise<boolean> | null>(null);
   const switchingView = useRef(false);
   const stackGeneration = useRef(0);
@@ -337,8 +376,39 @@ export function StackWindow() {
       if (nudgeTimerRef.current !== null) {
         window.clearTimeout(nudgeTimerRef.current);
       }
+      if (restoreTimerRef.current !== null) {
+        window.clearTimeout(restoreTimerRef.current);
+      }
+      if (catchBounceTimerRef.current !== null) {
+        window.clearTimeout(catchBounceTimerRef.current);
+      }
+      if (undoToastTimerRef.current !== null) {
+        window.clearTimeout(undoToastTimerRef.current);
+      }
     };
   }, []);
+
+  // Trigger catch-bounce & slot-digit roll whenever the stack count changes.
+  useEffect(() => {
+    const count = state?.items.length ?? 0;
+    if (prevCountRef.current !== null && count !== prevCountRef.current) {
+      setCountRollKey((k) => k + 1);
+      if (count > prevCountRef.current) {
+        setCatchBounce(false);
+        requestAnimationFrame(() => {
+          setCatchBounce(true);
+        });
+        if (catchBounceTimerRef.current !== null) {
+          window.clearTimeout(catchBounceTimerRef.current);
+        }
+        catchBounceTimerRef.current = window.setTimeout(() => {
+          catchBounceTimerRef.current = null;
+          setCatchBounce(false);
+        }, 420);
+      }
+    }
+    prevCountRef.current = count;
+  }, [state?.items.length]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -371,10 +441,15 @@ export function StackWindow() {
         setViewMode("collapsed");
         setFullImages({});
         setRemovingThumbIds({});
+        setVerticalDrag(null);
+        setDragReorder(null);
         setWorkingImage(null);
         setAnnotations([]);
         setUndoStack([]);
         setHasUnsavedEdits(false);
+        if (!next.canUndoRemove) {
+          setUndoToast(null);
+        }
         invoke("resize_stack_window", COLLAPSED_SIZE).catch(console.error);
       } else {
         setActiveIndex((cur) => Math.max(0, Math.min(cur, next.items.length - 1)));
@@ -421,7 +496,7 @@ export function StackWindow() {
     let frame = 0;
     let cancelled = false;
     const images = Array.from(document.querySelectorAll<HTMLImageElement>(
-      ".stack-pile img, .stack-preview-paper img, .stack-workspace img",
+      ".corner-stack img, .stack-preview-paper img, .stack-workspace img",
     ));
     void Promise.allSettled(images.map((image) => image.decode())).then(() => {
       if (cancelled) return;
@@ -469,6 +544,100 @@ export function StackWindow() {
     setFeedback(text);
     setTimeout(() => setFeedback((cur) => (cur === text ? null : cur)), 2200);
   }, []);
+
+  const clearUndoTimer = useCallback(() => {
+    if (undoToastTimerRef.current !== null) {
+      window.clearTimeout(undoToastTimerRef.current);
+      undoToastTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleUndoDismiss = useCallback(() => {
+    clearUndoTimer();
+    undoToastTimerRef.current = window.setTimeout(() => {
+      undoToastTimerRef.current = null;
+      if (undoToastHoveredRef.current) return;
+      setUndoToast(null);
+      if ((stateRef.current?.items.length ?? 0) === 0) {
+        invoke("dismiss_stack_undo").catch(console.error);
+      }
+    }, 4600);
+  }, [clearUndoTimer]);
+
+  const showUndoToast = useCallback(
+    (title: string, indexLabel: string) => {
+      setUndoToast({ title, indexLabel });
+      scheduleUndoDismiss();
+    },
+    [scheduleUndoDismiss]
+  );
+
+  const handleDismissUndoToast = useCallback(() => {
+    clearUndoTimer();
+    setUndoToast(null);
+    if ((stateRef.current?.items.length ?? 0) === 0) {
+      invoke("dismiss_stack_undo").catch(console.error);
+    }
+  }, [clearUndoTimer]);
+
+  const handleUndoRemove = useCallback(async () => {
+    if (undoRestoring) return;
+    clearUndoTimer();
+    setUndoRestoring(true);
+    try {
+      const restoredId = await invoke<number | null>("restore_last_removed_stack_item");
+      setUndoToast(null);
+      if (restoredId !== null) {
+        setJustRestoredId(restoredId);
+        if (restoreTimerRef.current !== null) {
+          window.clearTimeout(restoreTimerRef.current);
+        }
+        restoreTimerRef.current = window.setTimeout(() => {
+          restoreTimerRef.current = null;
+          setJustRestoredId(null);
+        }, 420);
+        showNotice("已恢复该叠堆卡片");
+      }
+    } catch (err) {
+      showNotice(String(err));
+    } finally {
+      setUndoRestoring(false);
+    }
+  }, [clearUndoTimer, showNotice, undoRestoring]);
+
+  const toggleDeleteStyle = useCallback(() => {
+    setDeleteStyle((prev) => {
+      const next: StackDeleteStyle = prev === "peel" ? "blocks" : "peel";
+      try {
+        window.localStorage.setItem(DELETE_STYLE_STORAGE_KEY, next);
+      } catch {
+        // ignore storage restrictions
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === "preview") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inEditable = Boolean(
+        target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.isContentEditable)
+      );
+      if (inEditable) return;
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        if (undoToast || stateRef.current?.canUndoRemove) {
+          e.preventDefault();
+          void handleUndoRemove();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [viewMode, undoToast, handleUndoRemove]);
 
   const markCopied = useCallback((key: string) => {
     setCopiedKey(key);
@@ -659,7 +828,7 @@ export function StackWindow() {
     async (
       nextMode: StackViewMode,
       initialIndex?: number,
-      targetTab?: "stitch" | "translate" | "ocr" | "ask"
+      targetTab?: StackWorkspaceTab
     ) => {
       if (switchingView.current || saveInFlight.current || removing) return;
       switchingView.current = true;
@@ -718,21 +887,57 @@ export function StackWindow() {
         if (animate) {
           const outgoing = modeLayers.current[viewMode];
           const incoming = modeLayers.current[nextMode];
-          const scale = (mode: StackViewMode) => reducedMotion ? "none" : mode === "collapsed" ? "scale(0.92)" : "scale(0.74)";
-          const motion = reducedMotion ? { duration: 130, easing: "ease-out" } : STACK_MOTION;
-          const exit = outgoing?.animate([
-            { opacity: 1, transform: "none" },
-            { opacity: 1, offset: 0.45 },
-            { opacity: 0, transform: scale(viewMode) },
-          ], { ...motion, fill: "forwards" });
-          const enter = incoming?.animate([
-            { opacity: 0, transform: scale(nextMode) },
-            { opacity: 1, transform: "none" },
-          ], motion);
-          await Promise.allSettled([exit?.finished, enter?.finished]);
-          if (generation !== stackGeneration.current) return;
-          flushSync(() => setLeavingMode(null));
-          exit?.cancel();
+          const isDrawerToggle =
+            (viewMode === "collapsed" && nextMode === "workspace") ||
+            (viewMode === "workspace" && nextMode === "collapsed");
+          const motion = reducedMotion
+            ? { duration: 120, easing: "ease-out" }
+            : isDrawerToggle
+              ? { duration: 240, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }
+              : STACK_MOTION;
+          if (isDrawerToggle) {
+            // Keep the bottom-right corner stack rock-steady while the floating drawer pops out / tucks in.
+            const opening = nextMode === "workspace";
+            const drawerEl = (opening ? incoming : outgoing)?.querySelector<HTMLElement>(".stack-workspace");
+            const redundantAnchor = outgoing?.querySelector<HTMLElement>(".stack-corner-anchor");
+            if (redundantAnchor) {
+              redundantAnchor.style.opacity = "0";
+            }
+            const drawerAnim = drawerEl?.animate(
+              opening
+                ? [
+                    { opacity: 0, transform: reducedMotion ? "none" : "translate(14px, 22px) scale(0.91)" },
+                    { opacity: 1, transform: "none" },
+                  ]
+                : [
+                    { opacity: 1, transform: "none" },
+                    { opacity: 0, transform: reducedMotion ? "none" : "translate(14px, 22px) scale(0.91)" },
+                  ],
+              { ...motion, fill: "forwards" }
+            );
+            await Promise.allSettled([drawerAnim?.finished]);
+            if (generation !== stackGeneration.current) return;
+            flushSync(() => setLeavingMode(null));
+            drawerAnim?.cancel();
+            if (redundantAnchor) {
+              redundantAnchor.style.opacity = "";
+            }
+          } else {
+            const scale = (mode: StackViewMode) => reducedMotion ? "none" : mode === "collapsed" ? "scale(0.92)" : "scale(0.74)";
+            const exit = outgoing?.animate([
+              { opacity: 1, transform: "none" },
+              { opacity: 1, offset: 0.45 },
+              { opacity: 0, transform: scale(viewMode) },
+            ], { ...motion, fill: "forwards" });
+            const enter = incoming?.animate([
+              { opacity: 0, transform: scale(nextMode) },
+              { opacity: 1, transform: "none" },
+            ], motion);
+            await Promise.allSettled([exit?.finished, enter?.finished]);
+            if (generation !== stackGeneration.current) return;
+            flushSync(() => setLeavingMode(null));
+            exit?.cancel();
+          }
         }
 
         if (reserve.width !== to.width || reserve.height !== to.height) {
@@ -1451,13 +1656,14 @@ export function StackWindow() {
 
       const hintBefore = showHint && activeDrag?.dropSlot === idx;
       const hintAfter = showHint && idx === items.length - 1 && activeDrag?.dropSlot === items.length;
-      const isRemovingThumb = Boolean(removingThumbIds[item.id]);
+      const removingStyle = removingThumbIds[item.id];
+      const isJustRestored = !activeDrag && justRestoredId === item.id;
 
       return (
         <React.Fragment key={item.id}>
           {hintBefore && <span className="stack-drop-hint" aria-hidden="true" />}
           <div
-            className={`stack-thumb-item${isDragging ? " dragging" : ""}${isRemovingThumb ? " removing" : ""}${isJustDropped ? " just-dropped" : ""}${isNeighborNudge ? " neighbor-nudge" : ""}`}
+            className={`stack-thumb-item${isDragging ? " dragging" : ""}${removingStyle === "peel" ? " removing peel-out" : removingStyle === "blocks" ? " removing blocks-out" : ""}${isJustDropped ? " just-dropped" : ""}${isJustRestored ? " just-restored" : ""}${isNeighborNudge ? " neighbor-nudge" : ""}`}
             tabIndex={0}
             aria-label={`截图 #${idx + 1}，拖拽或 ${ALT_LABEL}+方向键排序`}
             onPointerDown={(e) => startThumbDrag(e, idx)}
@@ -1496,12 +1702,12 @@ export function StackWindow() {
                 <button
                   type="button"
                   className="stack-thumb-btn danger"
-                  disabled={isRemovingThumb}
+                  disabled={Boolean(removingStyle)}
                   onClick={(e) => {
                     e.stopPropagation();
                     void handleThumbRemove(item.id);
                   }}
-                  title="移出"
+                  title="移出（可撤销）"
                 >
                   <X size={11} />
                 </button>
@@ -1513,32 +1719,297 @@ export function StackWindow() {
     });
   };
 
+  // Vibe 005: Vertical Drag-Ripple Reorder (lifted card shifts right 10px & scales to 94%, neighbors dodge 10->7->5->3px with 24ms ripple)
+  const startVerticalCardDrag = (
+    e: React.PointerEvent<HTMLDivElement>,
+    fromIdx: number
+  ) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    const listEl = dragListRef.current;
+    const itemCount = state?.items.length ?? 0;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initialScrollTop = listEl?.scrollTop ?? 0;
+    const listRect = listEl?.getBoundingClientRect();
+    const restingCards = listEl && listRect
+      ? Array.from(listEl.querySelectorAll<HTMLElement>(".stack-drag-card")).map((el) => {
+          const r = el.getBoundingClientRect();
+          return {
+            relTop: r.top - listRect.top + initialScrollTop,
+            height: r.height,
+            midClientY: r.top + r.height / 2,
+          };
+        })
+      : [];
+
+    let moved = false;
+    let currentSlot = fromIdx;
+    let cancelled = false;
+
+    const calcSlotAndLine = (clientY: number) => {
+      const scrollDelta = listEl ? listEl.scrollTop - initialScrollTop : 0;
+      const adjustedY = clientY + scrollDelta;
+      let slot = restingCards.length;
+      for (let i = 0; i < restingCards.length; i++) {
+        if (adjustedY < restingCards[i].midClientY) {
+          slot = i;
+          break;
+        }
+      }
+      let lineTop = 6;
+      if (restingCards.length > 0) {
+        if (slot <= 0) {
+          lineTop = Math.max(4, restingCards[0].relTop - 5);
+        } else if (slot >= restingCards.length) {
+          const last = restingCards[restingCards.length - 1];
+          lineTop = last.relTop + last.height + 4;
+        } else {
+          lineTop = restingCards[slot].relTop - 5;
+        }
+      }
+      return { slot, lineTop };
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+
+    const onMove = (ev: PointerEvent) => {
+      if (cancelled) return;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!moved && Math.hypot(dx, dy) > 4) {
+        moved = true;
+      }
+      if (!moved) return;
+      const { slot, lineTop } = calcSlotAndLine(ev.clientY);
+      currentSlot = slot;
+      setVerticalDrag({
+        fromIdx,
+        dropSlot: slot,
+        dy,
+        lineTop,
+        active: true,
+      });
+    };
+
+    const onCancel = () => {
+      cancelled = true;
+      cleanup();
+      setVerticalDrag(null);
+    };
+
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        onCancel();
+      }
+    };
+
+    const onUp = () => {
+      cleanup();
+      setVerticalDrag(null);
+      if (cancelled) return;
+      if (!moved) {
+        void switchViewMode("preview", fromIdx);
+        return;
+      }
+      const toIndex = currentSlot > fromIdx ? currentSlot - 1 : currentSlot;
+      if (toIndex !== fromIdx && toIndex >= 0 && toIndex < itemCount) {
+        const movedId = state?.items[fromIdx]?.id ?? null;
+        if (movedId !== null) {
+          setJustDroppedId(movedId);
+          if (dropSettleTimerRef.current !== null) {
+            window.clearTimeout(dropSettleTimerRef.current);
+          }
+          dropSettleTimerRef.current = window.setTimeout(() => {
+            dropSettleTimerRef.current = null;
+            setJustDroppedId(null);
+          }, 380);
+        }
+        invoke("reorder_stack_items", { fromIndex: fromIdx, toIndex })
+          .then(() => showNotice("已调整叠堆顺序"))
+          .catch((err) => showNotice(String(err)));
+      }
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKeyDown, true);
+  };
+
+  const renderVerticalDragList = () => {
+    const items = state?.items ?? [];
+    const activeDrag = verticalDrag?.active ? verticalDrag : null;
+    const showLine =
+      activeDrag !== null &&
+      activeDrag.dropSlot !== activeDrag.fromIdx &&
+      activeDrag.dropSlot !== activeDrag.fromIdx + 1;
+    const dodgeMag = [10, 7, 5, 3];
+
+    return (
+      <div className="stack-drag-list" ref={dragListRef}>
+        <div
+          className={`stack-drop-line${showLine ? " show" : ""}`}
+          style={{ top: `${activeDrag?.lineTop ?? 0}px` }}
+          aria-hidden="true"
+        />
+        {items.map((item, idx) => {
+          const isDragging = activeDrag !== null && activeDrag.fromIdx === idx;
+          const isJustDropped = !activeDrag && justDroppedId === item.id;
+          const isJustRestored = !activeDrag && justRestoredId === item.id;
+          const isNeighborNudge = !activeDrag && Boolean(nudgeThumbIds[item.id]);
+          const removingStyle = removingThumbIds[item.id];
+
+          let cardStyle: React.CSSProperties | undefined;
+          if (activeDrag) {
+            if (isDragging) {
+              // Pull aside 10px & shrink to 94% per Vibe 005 so drop target line stays clearly visible
+              cardStyle = {
+                cursor: "grabbing",
+                transform: `translate3d(10px, ${activeDrag.dy}px, 0) scale(0.94)`,
+                zIndex: 30,
+                pointerEvents: "none",
+                transition: "box-shadow 140ms ease, border-color 140ms ease",
+              };
+            } else if (showLine) {
+              const slot = activeDrag.dropSlot;
+              const isAbove = idx < slot;
+              const dist = Math.max(0, isAbove ? slot - 1 - idx : idx - slot);
+              const mag = dodgeMag[Math.min(dist, dodgeMag.length - 1)];
+              cardStyle = {
+                transform: `translate3d(0, ${isAbove ? -mag : mag}px, 0)`,
+                transitionDelay: `${dist * 24}ms`,
+              };
+            }
+          }
+
+          return (
+            <div
+              key={item.id}
+              className={`stack-drag-card${isDragging ? " dragging" : ""}${removingStyle === "peel" ? " peel-out" : removingStyle === "blocks" ? " blocks-out" : ""}${isNeighborNudge ? " neighbor-nudge" : ""}${isJustDropped ? " just-dropped" : ""}${isJustRestored ? " just-restored" : ""}`}
+              style={cardStyle}
+              tabIndex={0}
+              aria-label={`#${idx + 1} ${item.title}，拖拽或 ${ALT_LABEL}+上下方向键排序`}
+              onPointerDown={(e) => startVerticalCardDrag(e, idx)}
+              onKeyDown={(e) => {
+                if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+                  const toIndex = e.key === "ArrowUp" ? idx - 1 : idx + 1;
+                  if (toIndex >= 0 && toIndex < items.length) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    invoke("reorder_stack_items", { fromIndex: idx, toIndex }).catch((err) =>
+                      showNotice(String(err))
+                    );
+                  }
+                } else if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  void switchViewMode("preview", idx);
+                } else if (e.key === "Delete" || e.key === "Backspace") {
+                  e.preventDefault();
+                  void handleThumbRemove(item.id);
+                }
+              }}
+              title={`拖起排序 · 点击预览编辑 · ${ALT_LABEL}+↑/↓ 排序`}
+            >
+              <div className="stack-drag-grip" aria-hidden="true">
+                <GripVertical size={14} />
+              </div>
+              <div className="stack-drag-thumb">
+                <img src={item.thumbDataUrl} alt={item.title} draggable={false} />
+              </div>
+              <div className="stack-drag-main">
+                <strong>
+                  #{idx + 1} · {item.title}
+                </strong>
+                <span>
+                  {item.pixelWidth}×{item.pixelHeight} px · 点击预览与标注
+                </span>
+              </div>
+              <div className="stack-drag-actions">
+                <button
+                  type="button"
+                  className="stack-card-icon-btn subtle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void switchViewMode("preview", idx);
+                  }}
+                  title="预览与标注"
+                  aria-label="预览与标注"
+                >
+                  <Eye size={13} />
+                </button>
+                <button
+                  type="button"
+                  className="stack-card-icon-btn subtle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    invoke("pin_stack_item", { id: item.id }).catch((err) => showNotice(String(err)));
+                  }}
+                  title="贴图到屏幕"
+                  aria-label="贴图到屏幕"
+                >
+                  <Pin size={13} />
+                </button>
+                <button
+                  type="button"
+                  className="stack-card-icon-btn remove"
+                  disabled={Boolean(removingStyle)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleThumbRemove(item.id);
+                  }}
+                  title={deleteStyle === "peel" ? "撕贴纸移出（可撤销）" : "Blocks 消散移出（可撤销）"}
+                  aria-label={`移出 #${idx + 1} ${item.title}`}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const handleThumbRemove = async (id: number) => {
     if (removingThumbIds[id]) return;
     const reduced =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!reduced && state?.items) {
-      const idx = state.items.findIndex((it) => it.id === id);
-      if (idx >= 0) {
-        const neighbors: Record<number, true> = {};
-        if (state.items[idx - 1]) neighbors[state.items[idx - 1].id] = true;
-        if (state.items[idx + 1]) neighbors[state.items[idx + 1].id] = true;
-        if (Object.keys(neighbors).length > 0) {
-          setNudgeThumbIds(neighbors);
-          if (nudgeTimerRef.current !== null) {
-            window.clearTimeout(nudgeTimerRef.current);
-          }
-          nudgeTimerRef.current = window.setTimeout(() => {
-            nudgeTimerRef.current = null;
-            setNudgeThumbIds({});
-          }, 340);
+    const items = state?.items ?? [];
+    const idx = items.findIndex((it) => it.id === id);
+    const targetItem = idx >= 0 ? items[idx] : null;
+    const styleUsed = deleteStyle;
+
+    // React immediate neighbors BEFORE card finishes leaving (Vibe 014)
+    if (!reduced && idx >= 0) {
+      const neighbors: Record<number, true> = {};
+      if (items[idx - 1]) neighbors[items[idx - 1].id] = true;
+      if (items[idx + 1]) neighbors[items[idx + 1].id] = true;
+      if (Object.keys(neighbors).length > 0) {
+        setNudgeThumbIds(neighbors);
+        if (nudgeTimerRef.current !== null) {
+          window.clearTimeout(nudgeTimerRef.current);
         }
+        nudgeTimerRef.current = window.setTimeout(() => {
+          nudgeTimerRef.current = null;
+          setNudgeThumbIds({});
+        }, 360);
       }
     }
-    setRemovingThumbIds((prev) => ({ ...prev, [id]: true }));
+    setRemovingThumbIds((prev) => ({ ...prev, [id]: styleUsed }));
     if (!reduced) {
-      await new Promise((resolve) => window.setTimeout(resolve, 230));
+      await new Promise((resolve) =>
+        window.setTimeout(resolve, styleUsed === "peel" ? 280 : 220)
+      );
     }
     try {
       await invoke("remove_stack_item", { id });
@@ -1548,6 +2019,9 @@ export function StackWindow() {
         delete next[id];
         return next;
       });
+      if (targetItem) {
+        showUndoToast(targetItem.title, `#${idx + 1}`);
+      }
     } catch (err) {
       showNotice(String(err));
     } finally {
@@ -1572,6 +2046,8 @@ export function StackWindow() {
   const handlePreviewRemove = async () => {
     if (!activeItem || removing || saveInFlight.current) return;
     const id = activeItem.id;
+    const title = activeItem.title;
+    const idxLabel = `#${activeIndex + 1}`;
     setRemoving(true);
     try {
       await invoke("remove_stack_item", { id });
@@ -1582,6 +2058,7 @@ export function StackWindow() {
         delete next[id];
         return next;
       });
+      showUndoToast(title, idxLabel);
     } catch (err) {
       showNotice(String(err));
     } finally {
@@ -1676,137 +2153,210 @@ export function StackWindow() {
     markCopied(key);
   };
 
+  const renderUndoToast = (variant: "workspace" | "floating" = "workspace") => {
+    if (!undoToast) return null;
+    return (
+      <div
+        className={`stack-undo-toast${variant === "floating" ? " is-floating" : ""}`}
+        role="status"
+        aria-live="polite"
+        onMouseEnter={() => {
+          undoToastHoveredRef.current = true;
+          clearUndoTimer();
+        }}
+        onMouseLeave={() => {
+          undoToastHoveredRef.current = false;
+          scheduleUndoDismiss();
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="stack-undo-dot" aria-hidden="true" />
+        <span className="stack-undo-msg" title={`已移出「${undoToast.indexLabel} ${undoToast.title}」`}>
+          已移出「{undoToast.indexLabel} {undoToast.title}」
+        </span>
+        <button
+          type="button"
+          className="stack-undo-btn"
+          disabled={undoRestoring}
+          onClick={() => void handleUndoRemove()}
+        >
+          <Undo2 size={11} /> 撤销
+        </button>
+        <button
+          type="button"
+          className="stack-undo-close"
+          onClick={handleDismissUndoToast}
+          title="关闭提示"
+          aria-label="关闭提示"
+        >
+          <X size={11} />
+        </button>
+      </div>
+    );
+  };
+
   if (!state || state.items.length === 0) {
+    if (undoToast) {
+      return (
+        <div className="stack-view-surface">
+          <div className="stack-mode-layer" style={COLLAPSED_SIZE}>
+            <div className="stack-empty-undo-shell">{renderUndoToast("floating")}</div>
+          </div>
+        </div>
+      );
+    }
     return null;
   }
 
-  // ==================== 1. Collapsed Spatial Card Deck ====================
-  const renderCollapsed = () => {
+  // ==================== 1. Corner Physical Card Fan (Shared by Collapsed & Expanded Drawer) ====================
+  const renderCornerDeck = (isExpanded: boolean) => {
     const visible = state.items.slice(-4);
+    const total = state.items.length;
+    const baseIndex = total - visible.length;
+
     return (
-      <div className="stack-collapsed-shell" style={COLLAPSED_SIZE}>
+      <div className="stack-corner-anchor">
         <div
-          className="stack-pile"
-          onClick={() => switchViewMode("preview", state.items.length - 1)}
-          title="点击预览与编辑"
+          className={`corner-stack${catchBounce ? " catch-bounce" : ""}${isExpanded ? " is-expanded" : ""}`}
+          role="button"
+          tabIndex={0}
+          aria-expanded={isExpanded}
+          aria-label={
+            isExpanded
+              ? `收起叠堆浮层，当前 ${total}/${state.maxStackSize} 张`
+              : `展开叠堆浮层，当前 ${total}/${state.maxStackSize} 张`
+          }
+          onClick={() =>
+            void switchViewMode(
+              isExpanded ? "collapsed" : "workspace",
+              undefined,
+              isExpanded ? undefined : "cards"
+            )
+          }
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              void switchViewMode(
+                isExpanded ? "collapsed" : "workspace",
+                undefined,
+                isExpanded ? undefined : "cards"
+              );
+            }
+          }}
+          title={isExpanded ? "点击收起叠堆浮层" : "悬停物理扇开 · 点击展开叠堆浮层"}
         >
-          <div className="stack-drag-bar" data-tauri-drag-region onClick={(e) => e.stopPropagation()}>
-            <span className="stack-badge">
-              <Layers size={11} /> {state.items.length}/{state.maxStackSize}
-            </span>
-            <div className="stack-mini-actions">
-              <button
-                type="button"
-                className={`stack-mini-btn${copiedKey === "collapsed-copy" ? " copied" : ""}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleCollapsedCopyAll();
-                }}
-                title={
-                  state.items.length > 1
-                    ? `复制全部 ${state.items.length} 张`
-                    : "复制截图"
-                }
-                aria-label="复制全部截图"
-              >
-                {copiedKey === "collapsed-copy" ? <Check size={11} /> : <Copy size={11} />}
-              </button>
-              <button
-                type="button"
-                className="stack-mini-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  invoke("start_capture", { hideMain: false }).catch((err) => showNotice(String(err)));
-                }}
-                title="继续截图"
-              >
-                <Camera size={11} />
-              </button>
-              <button
-                type="button"
-                className="stack-mini-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  invoke("clear_stack").catch(console.error);
-                }}
-                title="清空叠堆"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          </div>
+          {visible.map((item, idx) => {
+            const offset = visible.length - 1 - idx;
+            const itemNum = baseIndex + idx + 1;
+            const layerClass =
+              offset === 0 ? "l1" : offset === 1 ? "l2" : offset === 2 ? "l3" : "l4";
 
-          {feedback && <div className="stack-collapsed-toast">{feedback}</div>}
-
-          <div className="stack-cards-fan">
-            {visible.map((item, idx) => {
-              const offset = visible.length - 1 - idx;
-              const rotate = offset === 0 ? 0 : offset === 1 ? -4.5 : offset === 2 ? 4.8 : -7;
-              const rotateHover = offset === 0 ? 0 : offset === 1 ? -7.2 : offset === 2 ? 7.5 : -10.5;
-              const translateY = offset * -4;
-              const translateYHover = offset === 0 ? -3 : offset * -5.5;
-              const translateZ = offset * -14;
-              const scale = 1 - offset * 0.05;
+            if (offset > 0) {
               return (
                 <div
                   key={item.id}
-                  className="stack-fan-card"
-                  style={
-                    {
-                      zIndex: idx + 1,
-                      "--fan-ty": `${translateY}px`,
-                      "--fan-ty-hover": `${translateYHover}px`,
-                      "--fan-tz": `${translateZ}px`,
-                      "--fan-rot": `${rotate}deg`,
-                      "--fan-rot-hover": `${rotateHover}deg`,
-                      "--fan-scale": `${scale}`,
-                    } as React.CSSProperties
-                  }
+                  className={`corner-stack-card back ${layerClass}`}
+                  aria-hidden="true"
                 >
-                  <img src={item.thumbDataUrl} alt={item.title} draggable={false} />
+                  <div className="corner-back-head">
+                    <span className="corner-back-num">#{itemNum}</span>
+                    <span className="corner-back-title">{item.title}</span>
+                  </div>
+                  <div className="corner-back-thumb">
+                    <img src={item.thumbDataUrl} alt={item.title} draggable={false} />
+                  </div>
                 </div>
               );
-            })}
-          </div>
+            }
 
-          <div className="stack-collapsed-guides" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              className="stack-guide-pill"
-              onClick={() => switchViewMode("workspace", undefined, "stitch")}
-              title="拼图与文件导出"
-            >
-              <Columns2 size={10} /> 拼图
-            </button>
-            <button
-              type="button"
-              className="stack-guide-pill"
-              onClick={() => switchViewMode("workspace", undefined, "translate")}
-              title="批量翻译全部叠堆截图"
-            >
-              <Languages size={10} /> 翻译
-            </button>
-            <button
-              type="button"
-              className="stack-guide-pill"
-              onClick={() => switchViewMode("workspace", undefined, "ocr")}
-              title="批量识别文字 OCR"
-            >
-              <ScanText size={10} /> 识字
-            </button>
-            <button
-              type="button"
-              className="stack-guide-pill accent"
-              onClick={() => switchViewMode("workspace", undefined, "ask")}
-              title="跨图问 AI 分析"
-            >
-              <Sparkles size={10} /> 问 AI
-            </button>
-          </div>
+            return (
+              <div key={item.id} className="corner-stack-card front l1">
+                <div className="corner-card-head">
+                  <div className="corner-card-toggle">
+                    <span
+                      className="corner-drag-grip"
+                      data-tauri-drag-region
+                      onClick={(e) => e.stopPropagation()}
+                      title="按住拖动叠堆窗口位置"
+                    >
+                      <GripVertical size={12} />
+                    </span>
+                    <span className="corner-card-title">收起 / 展开</span>
+                    <span className="corner-card-chevron" aria-hidden="true">
+                      {isExpanded ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+                    </span>
+                  </div>
+                  <span className="stack-slot-badge" aria-label={`${total} / ${state.maxStackSize}`}>
+                    <span key={countRollKey} className="slot-digit in">
+                      {total}
+                    </span>
+                    <span className="slot-sep">/{state.maxStackSize}</span>
+                  </span>
+                </div>
+
+                <div className="corner-card-preview">
+                  <img src={item.thumbDataUrl} alt={item.title} draggable={false} />
+                </div>
+
+                <div className="corner-card-foot">
+                  <span className="corner-card-hint">
+                    {isExpanded ? "点击收起浮层" : "悬停物理扇开"}
+                  </span>
+                  <div
+                    className="corner-card-micro-actions"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      className={`corner-micro-btn${copiedKey === "collapsed-copy" ? " copied" : ""}`}
+                      onClick={() => void handleCollapsedCopyAll()}
+                      title={total > 1 ? `复制全部 ${total} 张` : "复制截图"}
+                      aria-label="复制全部截图"
+                    >
+                      {copiedKey === "collapsed-copy" ? <Check size={10} /> : <Copy size={10} />}
+                    </button>
+                    <button
+                      type="button"
+                      className="corner-micro-btn"
+                      onClick={() =>
+                        invoke("start_capture", { hideMain: false }).catch((err) =>
+                          showNotice(String(err))
+                        )
+                      }
+                      title="继续截图"
+                      aria-label="继续截图"
+                    >
+                      <Camera size={10} />
+                    </button>
+                    <button
+                      type="button"
+                      className="corner-micro-btn danger"
+                      onClick={() => invoke("clear_stack").catch(console.error)}
+                      title="清空叠堆"
+                      aria-label="清空叠堆"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
   };
+
+  const renderCollapsed = () => (
+    <div className="stack-collapsed-shell" style={COLLAPSED_SIZE}>
+      {undoToast ? (
+        <div className="stack-collapsed-undo-wrap">{renderUndoToast("floating")}</div>
+      ) : (
+        feedback && <div className="stack-collapsed-toast">{feedback}</div>
+      )}
+      {renderCornerDeck(false)}
+    </div>
+  );
 
   // ==================== 2. 3D Layered Deck Preview & Floating Editor ====================
   const renderPreview = () => {
@@ -1839,7 +2389,13 @@ export function StackWindow() {
         }}
       >
         <div ref={viewportRef} className="stack-preview-spatial-stage">
-          {feedback && <div className="stack-floating-notice">{feedback}</div>}
+          {undoToast ? (
+            <div className="stack-preview-undo-wrap" data-preview-content>
+              {renderUndoToast("floating")}
+            </div>
+          ) : (
+            feedback && <div className="stack-floating-notice">{feedback}</div>
+          )}
 
           <div
             className="stack-preview-stage"
@@ -2299,14 +2855,25 @@ export function StackWindow() {
     );
   };
 
-  // ==================== 3. Expanded Stack Workspace ====================
+  // ==================== 3. Expanded Stack Floating Drawer + Anchored Corner Deck ====================
   const renderWorkspace = () => (
-    <div className="stack-expanded-shell">
-      <div className="stack-workspace">
+    <div
+      className="stack-expanded-shell"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          void switchViewMode("collapsed");
+        }
+      }}
+    >
+      <div className="stack-workspace" onClick={(e) => e.stopPropagation()}>
         <header className="result-header" data-tauri-drag-region>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600 }}>
-            <Layers size={14} style={{ color: "var(--accent)" }} />
-            <span>叠堆 ({state.items.length}/{state.maxStackSize})</span>
+          <div className="stack-drawer-title">
+            <Layers size={14} style={{ color: "var(--accent)", flexShrink: 0 }} />
+            <span className="stack-drawer-title-text">
+              {activeTab === "cards"
+                ? "叠堆浮层 · 拖起排序 / 点击 × 离场"
+                : `叠堆工作台 (${state.items.length}/${state.maxStackSize})`}
+            </span>
           </div>
 
           <div className="icon-actions">
@@ -2366,17 +2933,12 @@ export function StackWindow() {
           </div>
         </header>
 
-        {/* Horizontal thumbnail strip */}
-        <div className="stack-thumb-strip" ref={thumbStripRef}>
-          {renderThumbItems()}
-        </div>
-
         {/* Mode tabs */}
         <div className="stack-tabs">
-          <SlidingSegmented<"stitch" | "translate" | "ocr" | "ask">
+          <SlidingSegmented<StackWorkspaceTab>
             ariaLabel="叠堆工作模式"
             size="sm"
-            className="stack-tabs-seg"
+            className="stack-tabs-seg five-col"
             value={activeTab}
             onChange={(next) => {
               if (next === "translate" || next === "ocr") {
@@ -2386,6 +2948,14 @@ export function StackWindow() {
               }
             }}
             options={[
+              {
+                value: "cards",
+                label: (
+                  <>
+                    <ListOrdered size={12} /> 排序
+                  </>
+                ),
+              },
               {
                 value: "stitch",
                 label: (
@@ -2422,9 +2992,48 @@ export function StackWindow() {
           />
         </div>
 
-        {feedback && <div className="stack-notice">{feedback}</div>}
+        {/* Horizontal thumbnail strip shown on stitch/translate/ocr/ask tabs */}
+        {activeTab !== "cards" && (
+          <div className="stack-thumb-strip" ref={thumbStripRef}>
+            {renderThumbItems()}
+          </div>
+        )}
 
-        <div className="stack-body">
+        {feedback && !undoToast && <div className="stack-notice">{feedback}</div>}
+
+        <div className={`stack-body${activeTab === "cards" ? " is-cards-tab" : ""}`}>
+          {activeTab === "cards" && (
+            <div key="cards" className="stack-cards-pane stack-pane-enter">
+              <div className="stack-cards-subbar">
+                <button
+                  type="button"
+                  className="stack-exit-style-btn"
+                  onClick={toggleDeleteStyle}
+                  title="切换点击 × 时的卡片离场动画"
+                >
+                  <Wand2 size={11} />
+                  <span>
+                    {deleteStyle === "peel"
+                      ? "离场效果：Peel 撕贴纸"
+                      : "离场效果：Blocks 弹性消散"}
+                  </span>
+                </button>
+                <div className="stack-cards-subbar-right">
+                  <button
+                    type="button"
+                    className={`stack-mini-pill-btn${copiedKey === "collapsed-copy" ? " copied" : ""}`}
+                    onClick={() => void handleCollapsedCopyAll()}
+                    title={state.items.length > 1 ? `复制全部 ${state.items.length} 张` : "复制截图"}
+                  >
+                    {copiedKey === "collapsed-copy" ? <Check size={11} /> : <Copy size={11} />}
+                    <span>复制</span>
+                  </button>
+                </div>
+              </div>
+              {renderVerticalDragList()}
+            </div>
+          )}
+
           {activeTab === "stitch" && (
             <div key="stitch" className="stack-stitch-pane stack-pane-enter">
               <div className="result-section-head">
@@ -2774,6 +3383,13 @@ export function StackWindow() {
             </div>
           </>
         )}
+      </div>
+
+      <div className="stack-expanded-bottom-row">
+        <div className="stack-expanded-toast-slot">
+          {renderUndoToast("workspace")}
+        </div>
+        {renderCornerDeck(true)}
       </div>
     </div>
   );

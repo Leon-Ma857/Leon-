@@ -1,7 +1,7 @@
 {
   "name": "snaptrans",
   "private": true,
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "Quick WeChat-style screenshot translation desktop app powered by Tauri v2 and multimodal LLMs",
   "type": "module",
   "scripts": {

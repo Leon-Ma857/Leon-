@@ -221,6 +221,8 @@ export interface StackViewState {
   batchItems: BatchTextItem[];
   batchElapsedMs: number;
   landingCaptureId?: number;
+  canUndoRemove?: boolean;
+  lastRemovedTitle?: string | null;
   targetLang: string;
   engine: TranslateEngine;
 }

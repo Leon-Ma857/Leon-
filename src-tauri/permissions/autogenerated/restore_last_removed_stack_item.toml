@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-last-removed-stack-item"
+description = "Enables the restore_last_removed_stack_item command without any pre-configured scope."
+commands.allow = ["restore_last_removed_stack_item"]
+
+[[permission]]
+identifier = "deny-restore-last-removed-stack-item"
+description = "Denies the restore_last_removed_stack_item command without any pre-configured scope."
+commands.deny = ["restore_last_removed_stack_item"]
