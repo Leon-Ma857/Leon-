@@ -781,7 +781,7 @@ fn keep_stack_region_on_screen(win: &tauri::WebviewWindow, extent: (f64, f64)) -
     Ok(())
 }
 
-const STACK_COLLAPSED_EXTENT: (f64, f64) = (232.0, 156.0);
+const STACK_COLLAPSED_EXTENT: (f64, f64) = (340.0, 244.0);
 
 fn position_stack_bottom_right(app: &AppHandle, stack: &tauri::WebviewWindow) {
     #[cfg(windows)]
@@ -797,8 +797,8 @@ fn position_stack_bottom_right(app: &AppHandle, stack: &tauri::WebviewWindow) {
     let sf = f64::from(scale.max(1.0));
     let w_phys = (width_logical * sf).round() as i32;
     let h_phys = (height_logical * sf).round() as i32;
-    let margin = (20.0 * sf).round() as i32;
-    let bottom_margin = (56.0 * sf).round() as i32;
+    let margin = (12.0 * sf).round() as i32;
+    let bottom_margin = (46.0 * sf).round() as i32;
     // Place the compact visible region, not the invisible top-left of the Windows surface.
     let x = mon_x + mon_w as i32 - w_phys - margin;
     let y = mon_y + mon_h as i32 - h_phys - bottom_margin;

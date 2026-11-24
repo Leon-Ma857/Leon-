@@ -55,9 +55,9 @@ import { AskQuickActionsBar } from "../components/AskQuickActionsBar";
 import { Popconfirm } from "../components/Popconfirm";
 import { SlidingSegmented } from "../components/SlidingSegmented";
 
-const COLLAPSED_SIZE = { width: 232, height: 156 };
+const COLLAPSED_SIZE = { width: 340, height: 244 };
 const PREVIEW_SIZE = { width: 820, height: 560 };
-const EXPANDED_SIZE = { width: 416, height: 462 };
+const EXPANDED_SIZE = { width: 472, height: 552 };
 const STACK_SIZES = { collapsed: COLLAPSED_SIZE, preview: PREVIEW_SIZE, workspace: EXPANDED_SIZE };
 const STACK_MOTION = { duration: 285, easing: "cubic-bezier(0.23, 0.65, 0.32, 1)" };
 const DELETE_STYLE_STORAGE_KEY = "luma.stackDeleteStyle";
@@ -2277,7 +2277,7 @@ export function StackWindow() {
                     onClick={(e) => e.stopPropagation()}
                     title="按住拖动叠堆窗口位置"
                   >
-                    <GripVertical size={9} />
+                    <GripVertical size={12} />
                   </span>
 
                   <span className="stack-slot-badge" aria-label={`${total} / ${state.maxStackSize}`}>
@@ -2286,7 +2286,7 @@ export function StackWindow() {
                     </span>
                     <span className="slot-sep">/{state.maxStackSize}</span>
                     <span className="corner-badge-chevron" aria-hidden="true">
-                      {isExpanded ? <ChevronDown size={8} /> : <ChevronUp size={8} />}
+                      {isExpanded ? <ChevronDown size={10} /> : <ChevronUp size={10} />}
                     </span>
                   </span>
 
@@ -2301,7 +2301,7 @@ export function StackWindow() {
                       title={total > 1 ? `复制全部 ${total} 张` : "复制截图"}
                       aria-label="复制全部截图"
                     >
-                      {copiedKey === "collapsed-copy" ? <Check size={9} /> : <Copy size={9} />}
+                      {copiedKey === "collapsed-copy" ? <Check size={12} /> : <Copy size={12} />}
                     </button>
                     <button
                       type="button"
@@ -2314,7 +2314,7 @@ export function StackWindow() {
                       title="继续截图"
                       aria-label="继续截图"
                     >
-                      <Camera size={9} />
+                      <Camera size={12} />
                     </button>
                     <button
                       type="button"
@@ -2323,7 +2323,7 @@ export function StackWindow() {
                       title="清空叠堆"
                       aria-label="清空叠堆"
                     >
-                      <X size={9} />
+                      <X size={12} />
                     </button>
                   </div>
                 </div>

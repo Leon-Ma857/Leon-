@@ -31,15 +31,15 @@ impl CroppedRegion {
         format!("data:image/png;base64,{}", self.raw_base64)
     }
 
-    /// Generate a compact thumbnail data URL for history storage so memory stays minimal.
+    /// Generate a compact HiDPI-sharp thumbnail data URL for stack cards and history storage.
     pub fn make_thumbnail_data_url(&self) -> String {
-        if self.pixel_width <= 260 && self.pixel_height <= 180 {
+        if self.pixel_width <= 440 && self.pixel_height <= 280 {
             return self.data_url();
         }
         let Ok(dyn_img) = image::load_from_memory(&self.png_bytes) else {
             return String::new();
         };
-        let thumb = dyn_img.thumbnail(260, 180);
+        let thumb = dyn_img.thumbnail(440, 280);
         let rgba = thumb.to_rgba8();
         let mut buf = Vec::new();
         let encoder =

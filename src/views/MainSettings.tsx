@@ -49,6 +49,11 @@ import {
 } from "../types";
 
 import { AskActionsSettings } from "../components/AskActionsSettings";
+import {
+  HistoryScrollMode,
+  HistoryScrollStage,
+  HistoryViewMode,
+} from "../components/HistoryScrollStage";
 import { LocalOcrSettings } from "../components/LocalOcrSettings";
 import { Popconfirm } from "../components/Popconfirm";
 import { ShortcutRow } from "../components/ShortcutRow";
@@ -58,6 +63,88 @@ import { UpdateDialog } from "./UpdateDialog";
 import { useAppUpdate } from "../hooks/useAppUpdate";
 
 type WorkspacePane = "shortcuts" | "engines" | "system" | "text" | "history";
+
+const HISTORY_VIEW_STORAGE_KEY = "luma.historyViewMode";
+
+function loadSavedHistoryViewMode(): HistoryViewMode {
+  try {
+    const raw = window.localStorage.getItem(HISTORY_VIEW_STORAGE_KEY);
+    if (raw === "list" || raw === "stacked" || raw === "coverflow" || raw === "deck") {
+      return raw;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return "stacked";
+}
+
+const DEMO_HISTORY_ITEMS: TranslationResult[] = [
+  {
+    id: -101,
+    mode: "translate",
+    engine: "ai",
+    sourceLang: "EN",
+    targetLang: "简体中文",
+    originalText: "Hold Tab while selecting to replace only text blocks in place without darkening the screen.",
+    translatedText: "零遮罩透视截图与原位回填：选区外部 100% 透明保持工作上下文，按住 Tab 仅替换识别到的文字块。",
+    elapsedMs: 310,
+    model: "gpt-4o-mini",
+    imageDataUrl: "",
+    createdAtMs: Date.now() - 4 * 60_000,
+  },
+  {
+    id: -102,
+    mode: "translate",
+    engine: "ai",
+    sourceLang: "EN",
+    targetLang: "简体中文",
+    originalText: "Multiple captures fly smoothly into the corner stack and fan out physically on hover.",
+    translatedText: "角落叠堆与悬停物理扇开：连续截取多张参考图后自动汇入桌面右下角，悬停即扇形展开，点开抽屉支持拖拽波纹让位。",
+    elapsedMs: 285,
+    model: "gpt-4o-mini",
+    imageDataUrl: "",
+    createdAtMs: Date.now() - 18 * 60_000,
+  },
+  {
+    id: -103,
+    mode: "ocr",
+    engine: "ai",
+    sourceLang: "AUTO",
+    targetLang: "简体中文",
+    originalText: "",
+    translatedText: "本地离线高精度 OCR 识别：无需联网即可秒级提取公式、代码报错与多语言表格，支持一键复制或转入 AI 追问。",
+    elapsedMs: 142,
+    model: "RapidOCR v4",
+    imageDataUrl: "",
+    createdAtMs: Date.now() - 42 * 60_000,
+  },
+  {
+    id: -104,
+    mode: "translate",
+    engine: "deepl",
+    sourceLang: "EN",
+    targetLang: "简体中文",
+    originalText: "requireSignedVersion: true · NSIS allowDowngrades: false",
+    translatedText: "签名校验与后台自动提醒：后台静默检查已签名的 latest.json，发现新版仅通过托盘与轻提示告知，由你确认后安装。",
+    elapsedMs: 260,
+    model: "DeepL",
+    imageDataUrl: "",
+    createdAtMs: Date.now() - 68 * 60_000,
+  },
+  {
+    id: -105,
+    mode: "translate",
+    engine: "ai",
+    sourceLang: "EN",
+    targetLang: "简体中文",
+    originalText: "transparent: true · decorations: false · skipTaskbar: true",
+    translatedText: "轻浮于应用层之上，绝不霸屏：非黑 3D 立体按键与贴边浮窗设计，让翻译与识字隐于工作流之中、随时呼之即来。",
+    elapsedMs: 295,
+    model: "gpt-4o-mini",
+    imageDataUrl: "",
+    createdAtMs: Date.now() - 125 * 60_000,
+  },
+];
 
 const DEFAULT_CONFIG: AppConfig = {
   shortcut: "Alt+Q",
@@ -186,6 +273,23 @@ export function MainSettings() {
   const [appVersion, setAppVersion] = useState<string>("");
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyModeFilter, setHistoryModeFilter] = useState<"all" | "translate" | "ocr">("all");
+  const [historyViewMode, setHistoryViewMode] = useState<HistoryViewMode>(loadSavedHistoryViewMode);
+  const [historyDemoMode, setHistoryDemoMode] = useState(false);
+
+  const changeHistoryViewMode = (next: HistoryViewMode) => {
+    setHistoryViewMode(next);
+    try {
+      window.localStorage.setItem(HISTORY_VIEW_STORAGE_KEY, next);
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  useEffect(() => {
+    if (history.length > 0 && historyDemoMode) {
+      setHistoryDemoMode(false);
+    }
+  }, [history.length, historyDemoMode]);
   const [recordingTarget, setRecordingTarget] = useState<"capture" | "clipboard" | "selection" | null>(null);
   const [systemProxy, setSystemProxy] = useState<SystemProxyInfo | null>(null);
   const [proxyMode, setProxyMode] = useState<"system" | "custom">("system");
@@ -823,7 +927,15 @@ export function MainSettings() {
 
       {/* ==================== Right Workspace Canvas ==================== */}
       <main className="v3-workspace" aria-busy={saving}>
-        <div className="v3-workspace-scroll">
+        <div
+          className={`v3-workspace-scroll${
+            pane === "history" &&
+            historyViewMode !== "list" &&
+            (filteredHistory.length > 0 || (history.length === 0 && historyDemoMode))
+              ? " is-history-stage"
+              : ""
+          }`}
+        >
           {/* PANE 1: SHORTCUTS & INTERACTION */}
           {pane === "shortcuts" && (
             <div key="shortcuts" className="v3-pane">
@@ -1600,55 +1712,75 @@ export function MainSettings() {
 
           {/* PANE 5: HISTORY ARCHIVE */}
           {pane === "history" && (
-            <div key="history" className="v3-pane">
+            <div
+              key="history"
+              className={`v3-pane${historyViewMode !== "list" ? " v3-pane-history-stage" : ""}`}
+            >
               <div className="v3-pane-head">
                 <div>
                   <h1 className="v3-pane-title">历史</h1>
-                  <p className="v3-pane-sub">共 {history.length} 条本地记录</p>
+                  <p className="v3-pane-sub">
+                    共 {history.length} 条本地记录
+                    {historyViewMode !== "list" ? " · 原生滚轮实时驱动" : ""}
+                  </p>
                 </div>
-                {history.length > 0 && (
-                  <div className="v3-head-actions">
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() => exportHistory("markdown")}
-                      title="导出为 Markdown"
-                    >
-                      <Download size={12} /> MD
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() => exportHistory("json")}
-                      title="导出为 JSON"
-                    >
-                      <Download size={12} /> JSON
-                    </button>
-                    <Popconfirm
-                      message={`清空全部 ${history.length} 条历史记录？`}
-                      confirmLabel="清空"
-                      onConfirm={async () => {
-                        try {
-                          await invoke("clear_history");
-                          setHistory([]);
-                          setStatus({ kind: "ok", text: "已清空历史记录" });
-                        } catch (err) {
-                          setStatus({ kind: "err", text: String(err) });
-                        }
-                      }}
-                    >
-                      {(triggerProps) => (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-danger"
-                          {...triggerProps}
-                        >
-                          <Trash2 size={12} /> 清空
-                        </button>
-                      )}
-                    </Popconfirm>
-                  </div>
-                )}
+                <div className="v3-head-actions">
+                  <SlidingSegmented<HistoryViewMode>
+                    ariaLabel="历史视图模式"
+                    size="sm"
+                    value={historyViewMode}
+                    onChange={changeHistoryViewMode}
+                    options={[
+                      { value: "list", label: "列表" },
+                      { value: "stacked", label: "层叠" },
+                      { value: "coverflow", label: "3D 轮播" },
+                      { value: "deck", label: "飞牌" },
+                    ]}
+                  />
+                  {history.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => exportHistory("markdown")}
+                        title="导出为 Markdown"
+                      >
+                        <Download size={12} /> MD
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => exportHistory("json")}
+                        title="导出为 JSON"
+                      >
+                        <Download size={12} /> JSON
+                      </button>
+                      <Popconfirm
+                        message={`清空全部 ${history.length} 条历史记录？`}
+                        confirmLabel="清空"
+                        onConfirm={async () => {
+                          try {
+                            await invoke("clear_history");
+                            setHistory([]);
+                            setStatus({ kind: "ok", text: "已清空历史记录" });
+                          } catch (err) {
+                            setStatus({ kind: "err", text: String(err) });
+                          }
+                        }}
+                      >
+                        {(triggerProps) => (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-danger"
+                            {...triggerProps}
+                          >
+                            <Trash2 size={12} /> 清空
+                          </button>
+                        )}
+                      </Popconfirm>
+                    </>
+                  )}
+                </div>
               </div>
 
               {historyLoadError && <div className="error-box">{historyLoadError}</div>}
@@ -1688,14 +1820,60 @@ export function MainSettings() {
               </div>
 
               {filteredHistory.length === 0 ? (
-                <div className="card v3-empty-state">
-                  <History size={22} className="v3-empty-icon" />
-                  <div>
-                    {history.length === 0
-                      ? `暂无记录 · 按 ${formatShortcutLabel(config.shortcut)} 开始截图翻译`
-                      : "没有匹配的记录"}
+                history.length === 0 && historyDemoMode && historyViewMode !== "list" ? (
+                  <HistoryScrollStage
+                    items={DEMO_HISTORY_ITEMS}
+                    mode={historyViewMode as HistoryScrollMode}
+                    onModeChange={(m) => changeHistoryViewMode(m)}
+                    copiedId={copiedId}
+                    exitingIds={exitingHistoryIds}
+                    onReopen={() => undefined}
+                    onCopy={copyHistory}
+                    onDelete={() => undefined}
+                    formatTimestamp={formatTimestamp}
+                    isDemo
+                    onExitDemo={() => setHistoryDemoMode(false)}
+                  />
+                ) : (
+                  <div className="card v3-empty-state">
+                    <History size={22} className="v3-empty-icon" />
+                    <div>
+                      {history.length === 0
+                        ? `暂无记录 · 按 ${formatShortcutLabel(config.shortcut)} 开始截图翻译`
+                        : "没有匹配的记录"}
+                    </div>
+                    {history.length === 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => {
+                          if (historyViewMode === "list") {
+                            changeHistoryViewMode("stacked");
+                          }
+                          setHistoryDemoMode(true);
+                        }}
+                      >
+                        <Sparkles size={12} /> 用示例卡片体验 3 种滚轮效果
+                      </button>
+                    )}
                   </div>
-                </div>
+                )
+              ) : historyViewMode !== "list" ? (
+                <HistoryScrollStage
+                  items={filteredHistory}
+                  mode={historyViewMode}
+                  onModeChange={(m) => changeHistoryViewMode(m)}
+                  copiedId={copiedId}
+                  exitingIds={exitingHistoryIds}
+                  onReopen={(id) =>
+                    invoke("reopen_history_item", { id }).catch((err) =>
+                      setStatus({ kind: "err", text: String(err) })
+                    )
+                  }
+                  onCopy={copyHistory}
+                  onDelete={(id) => void deleteHistoryItem(id)}
+                  formatTimestamp={formatTimestamp}
+                />
               ) : (
                 <div className="history-cards-col">
                   {filteredHistory.map((item) => (
