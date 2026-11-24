@@ -7,6 +7,7 @@ import {
   Check,
   ChevronsDown,
   Circle,
+  Contrast,
   Copy,
   Download,
   ExternalLink,
@@ -47,6 +48,7 @@ import {
   wrapCanvasText,
 } from "../utils/inPlaceLayout";
 import { AskQuickActionsBar } from "../components/AskQuickActionsBar";
+import { SlidingSegmented } from "../components/SlidingSegmented";
 
 interface Rect {
   x: number;
@@ -395,6 +397,24 @@ export function OverlayCapture() {
   const [activeTargetLang, setActiveTargetLang] = useState<string>("简体中文");
   const [cursorPt, setCursorPt] = useState<Point | null>(null);
   const [loupeInfo, setLoupeInfo] = useState<{ hex: string; px: number; py: number } | null>(null);
+  const [showScrim, setShowScrim] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem("luma.overlayScrim") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleScrim = useCallback(() => {
+    setShowScrim((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("luma.overlayScrim", next ? "1" : "0");
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  }, []);
 
   const nextIdRef = useRef(1);
   const latestCaptureIdRef = useRef<number>(0);
@@ -1518,6 +1538,9 @@ export function OverlayCapture() {
       } else if (k === "q") {
         e.preventDefault();
         void runScanQr(targetEntry);
+      } else if (k === "m") {
+        e.preventDefault();
+        toggleScrim();
       }
     };
 
@@ -1535,6 +1558,7 @@ export function OverlayCapture() {
     runStageToStack,
     sidePanelOpen,
     textDraft,
+    toggleScrim,
     toggleTabInPlaceTranslation,
     tool,
   ]);
@@ -1861,9 +1885,9 @@ export function OverlayCapture() {
     return { left, top };
   }, [activeRegion, analysis.status, panelMaxH, sidePanelOpen]);
 
-  const hudEstimatedW = 740;
+  const hudEstimatedW = 780;
   const showSubbar = regions.length > 0 && tool !== "select";
-  const hudEstimatedH = showSubbar ? 84 : 44;
+  const hudEstimatedH = showSubbar ? 82 : 40;
 
   const { hudTop, hudLeft } = useMemo(() => {
     if (!anchorRect) return { hudTop: 0, hudLeft: 0 };
@@ -2081,7 +2105,7 @@ export function OverlayCapture() {
         />
       )}
 
-      {cutoutRects.length > 0 && (
+      {showScrim && cutoutRects.length > 0 && (
         <svg className="overlay-dim-svg" width="100%" height="100%">
           <defs>
             <mask id="overlay-cutout-mask">
@@ -2101,7 +2125,7 @@ export function OverlayCapture() {
           <rect
             width="100%"
             height="100%"
-            fill="rgba(0, 0, 0, 0.16)"
+            fill="rgba(0, 0, 0, 0.18)"
             mask="url(#overlay-cutout-mask)"
           />
         </svg>
@@ -2112,6 +2136,18 @@ export function OverlayCapture() {
           {stagedStatus
             ? `叠堆 ${stagedStatus.count}/${stagedStatus.maxSize} · 继续框选，Esc / 右键退出`
             : "拖拽框选 · Shift 多选 · C 取色 · Esc 退出"}
+        </div>
+      )}
+
+      {cursorPt && draftRect && draftRect.w > 2 && draftRect.h > 2 && (
+        <div
+          className="overlay-cursor-tip"
+          style={{
+            left: Math.min(window.innerWidth - 118, Math.max(8, cursorPt.x + 14)),
+            top: Math.max(8, cursorPt.y - 30),
+          }}
+        >
+          {Math.round(draftRect.w * scale)} × {Math.round(draftRect.h * scale)} px
         </div>
       )}
 
@@ -2226,7 +2262,7 @@ export function OverlayCapture() {
       {/* Draft selection box while dragging */}
       {draftRect && draftRect.w > 2 && draftRect.h > 2 && (
         <div
-          className="overlay-selection active"
+          className="overlay-selection active is-draft"
           style={{
             left: draftRect.x,
             top: draftRect.y,
@@ -2235,6 +2271,10 @@ export function OverlayCapture() {
             pointerEvents: "none",
           }}
         >
+          <span className="reticle-bracket tl" aria-hidden="true" />
+          <span className="reticle-bracket tr" aria-hidden="true" />
+          <span className="reticle-bracket bl" aria-hidden="true" />
+          <span className="reticle-bracket br" aria-hidden="true" />
           <div className="overlay-size-tag">
             {Math.round(draftRect.w * scale)} × {Math.round(draftRect.h * scale)}
           </div>
@@ -2398,6 +2438,24 @@ export function OverlayCapture() {
               )}
             </div>
 
+            <span className="reticle-bracket tl" aria-hidden="true" />
+            <span className="reticle-bracket tr" aria-hidden="true" />
+            <span className="reticle-bracket bl" aria-hidden="true" />
+            <span className="reticle-bracket br" aria-hidden="true" />
+            {isActive && r.w >= 180 && (
+              <div
+                className={`overlay-tab-badge${inPlacePreview ? " tab-on" : ""}`}
+                style={
+                  hudAboveSelection && r.y + r.h + 34 < window.innerHeight
+                    ? { top: "auto", bottom: -28 }
+                    : r.y < 34
+                      ? { top: 6, right: 6 }
+                      : undefined
+                }
+              >
+                {inPlacePreview ? "原位译文中" : "按住 Tab 原位译文"}
+              </div>
+            )}
             {handles.map((h) => (
               <div
                 key={h.id}
@@ -2562,7 +2620,7 @@ export function OverlayCapture() {
               onClick={() => void runScrollCapture(activeRegion)}
               title="滚动截长图 · Esc 结束"
             >
-              <ChevronsDown size={14} /> 截长图
+              <ChevronsDown size={14} /> 长图
             </button>
             <button
               type="button"
@@ -2570,7 +2628,7 @@ export function OverlayCapture() {
               onClick={runStageToStack}
               title="入叠堆 (B)"
             >
-              <Layers size={14} /> 入叠堆
+              <Layers size={14} /> 入堆
             </button>
             <button
               type="button"
@@ -2595,6 +2653,14 @@ export function OverlayCapture() {
               title="复制 (C / 空格)"
             >
               <Copy size={14} />
+            </button>
+            <button
+              type="button"
+              className={`hud-icon-btn ${showScrim ? "active" : ""}`}
+              onClick={toggleScrim}
+              title={showScrim ? "关闭背景压暗遮罩 (M)" : "开启背景压暗遮罩 (M)"}
+            >
+              <Contrast size={14} />
             </button>
             <button
               type="button"
@@ -2688,29 +2754,38 @@ export function OverlayCapture() {
           }}
         >
           <div className="result-header" style={{ cursor: "default" }}>
-            <div className="mode-pills">
-              <button
-                type="button"
-                className={`mode-pill ${analysis.status === "translate" ? "active" : ""}`}
-                onClick={() => switchAnalysisMode("translate")}
-              >
-                <Languages size={12} /> 翻译
-              </button>
-              <button
-                type="button"
-                className={`mode-pill ${analysis.status === "ocr" ? "active" : ""}`}
-                onClick={() => switchAnalysisMode("ocr")}
-              >
-                <ScanText size={12} /> 识字
-              </button>
-              <button
-                type="button"
-                className={`mode-pill ${analysis.status === "ask" ? "active" : ""}`}
-                onClick={() => switchAnalysisMode("ask")}
-              >
-                <Sparkles size={12} /> 问 AI
-              </button>
-            </div>
+            <SlidingSegmented<"translate" | "ocr" | "ask">
+              ariaLabel="分析模式"
+              size="xs"
+              value={analysis.status}
+              onChange={(next) => switchAnalysisMode(next)}
+              options={[
+                {
+                  value: "translate",
+                  label: (
+                    <>
+                      <Languages size={12} /> 翻译
+                    </>
+                  ),
+                },
+                {
+                  value: "ocr",
+                  label: (
+                    <>
+                      <ScanText size={12} /> 识字
+                    </>
+                  ),
+                },
+                {
+                  value: "ask",
+                  label: (
+                    <>
+                      <Sparkles size={12} /> 问 AI
+                    </>
+                  ),
+                },
+              ]}
+            />
 
             <div className="icon-actions">
               <button

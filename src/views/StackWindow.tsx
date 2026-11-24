@@ -49,6 +49,7 @@ import {
 } from "../types";
 import { AskQuickActionsBar } from "../components/AskQuickActionsBar";
 import { Popconfirm } from "../components/Popconfirm";
+import { SlidingSegmented } from "../components/SlidingSegmented";
 
 const COLLAPSED_SIZE = { width: 236, height: 168 };
 const PREVIEW_SIZE = { width: 820, height: 560 };
@@ -287,6 +288,10 @@ export function StackWindow() {
   const [slide, setSlide] = useState<1 | -1 | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removingThumbIds, setRemovingThumbIds] = useState<Record<number, true>>({});
+  const [nudgeThumbIds, setNudgeThumbIds] = useState<Record<number, true>>({});
+  const [justDroppedId, setJustDroppedId] = useState<number | null>(null);
+  const dropSettleTimerRef = useRef<number | null>(null);
+  const nudgeTimerRef = useRef<number | null>(null);
   const [tool, setTool] = useState<PreviewTool>("pan");
   const [color, setColor] = useState(PREVIEW_COLORS[0]);
   const [strokeWidth, setStrokeWidth] = useState(4);
@@ -323,6 +328,17 @@ export function StackWindow() {
     | { kind: "crop"; sx: number; sy: number }
     | { kind: "draw" }
   >({ kind: "none" });
+
+  useEffect(() => {
+    return () => {
+      if (dropSettleTimerRef.current !== null) {
+        window.clearTimeout(dropSettleTimerRef.current);
+      }
+      if (nudgeTimerRef.current !== null) {
+        window.clearTimeout(nudgeTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -1369,6 +1385,17 @@ export function StackWindow() {
       if (isOutsideStrip(ev.clientX, ev.clientY)) return;
       const toIndex = currentSlot > fromIdx ? currentSlot - 1 : currentSlot;
       if (toIndex !== fromIdx && toIndex >= 0 && toIndex < itemCount) {
+        const movedId = state?.items[fromIdx]?.id ?? null;
+        if (movedId !== null) {
+          setJustDroppedId(movedId);
+          if (dropSettleTimerRef.current !== null) {
+            window.clearTimeout(dropSettleTimerRef.current);
+          }
+          dropSettleTimerRef.current = window.setTimeout(() => {
+            dropSettleTimerRef.current = null;
+            setJustDroppedId(null);
+          }, 360);
+        }
         invoke("reorder_stack_items", { fromIndex: fromIdx, toIndex }).catch((err) =>
           showNotice(String(err))
         );
@@ -1388,26 +1415,30 @@ export function StackWindow() {
       activeDrag !== null &&
       activeDrag.dropSlot !== activeDrag.fromIdx &&
       activeDrag.dropSlot !== activeDrag.fromIdx + 1;
+    const dodgeMag = [10, 7, 5, 3];
 
     return items.map((item, idx) => {
       const isDragging = activeDrag !== null && activeDrag.fromIdx === idx;
+      const isJustDropped = !activeDrag && justDroppedId === item.id;
+      const isNeighborNudge = !activeDrag && Boolean(nudgeThumbIds[item.id]);
 
       let rippleStyle: React.CSSProperties | undefined;
       if (activeDrag) {
         if (isDragging) {
-          const liftY = Math.max(-6, Math.min(6, activeDrag.dy - 4));
+          // Lift and slightly scale down so the thin drop indicator line remains unobstructed (Vibe 005).
+          const liftY = Math.max(-10, Math.min(4, activeDrag.dy - 6));
           rippleStyle = {
             cursor: "grabbing",
-            transform: `translate3d(${activeDrag.dx}px, ${liftY}px, 0) scale(1.04)`,
+            transform: `translate3d(${activeDrag.dx}px, ${liftY}px, 0) scale(0.95)`,
             zIndex: 20,
             pointerEvents: "none",
-            transition: "box-shadow 0.16s ease, opacity 0.16s ease",
+            transition: "box-shadow 140ms ease, opacity 140ms ease",
           };
         } else if (showHint) {
           const slot = activeDrag.dropSlot;
           const isLeft = idx < slot;
           const n = isLeft ? slot - 1 - idx : idx - slot;
-          const shift = Math.round(8 * Math.pow(0.7, n));
+          const shift = dodgeMag[Math.min(n, dodgeMag.length - 1)];
           rippleStyle = {
             cursor: "grabbing",
             transform: `translate3d(${isLeft ? -shift : shift}px, 0, 0)`,
@@ -1426,7 +1457,7 @@ export function StackWindow() {
         <React.Fragment key={item.id}>
           {hintBefore && <span className="stack-drop-hint" aria-hidden="true" />}
           <div
-            className={`stack-thumb-item${isDragging ? " dragging" : ""}${isRemovingThumb ? " removing" : ""}`}
+            className={`stack-thumb-item${isDragging ? " dragging" : ""}${isRemovingThumb ? " removing" : ""}${isJustDropped ? " just-dropped" : ""}${isNeighborNudge ? " neighbor-nudge" : ""}`}
             tabIndex={0}
             aria-label={`截图 #${idx + 1}，拖拽或 ${ALT_LABEL}+方向键排序`}
             onPointerDown={(e) => startThumbDrag(e, idx)}
@@ -1484,12 +1515,30 @@ export function StackWindow() {
 
   const handleThumbRemove = async (id: number) => {
     if (removingThumbIds[id]) return;
-    setRemovingThumbIds((prev) => ({ ...prev, [id]: true }));
     const reduced =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!reduced && state?.items) {
+      const idx = state.items.findIndex((it) => it.id === id);
+      if (idx >= 0) {
+        const neighbors: Record<number, true> = {};
+        if (state.items[idx - 1]) neighbors[state.items[idx - 1].id] = true;
+        if (state.items[idx + 1]) neighbors[state.items[idx + 1].id] = true;
+        if (Object.keys(neighbors).length > 0) {
+          setNudgeThumbIds(neighbors);
+          if (nudgeTimerRef.current !== null) {
+            window.clearTimeout(nudgeTimerRef.current);
+          }
+          nudgeTimerRef.current = window.setTimeout(() => {
+            nudgeTimerRef.current = null;
+            setNudgeThumbIds({});
+          }, 340);
+        }
+      }
+    }
+    setRemovingThumbIds((prev) => ({ ...prev, [id]: true }));
     if (!reduced) {
-      await new Promise((resolve) => window.setTimeout(resolve, 185));
+      await new Promise((resolve) => window.setTimeout(resolve, 230));
     }
     try {
       await invoke("remove_stack_item", { id });
@@ -2324,34 +2373,53 @@ export function StackWindow() {
 
         {/* Mode tabs */}
         <div className="stack-tabs">
-          <button
-            type="button"
-            className={`mode-pill ${activeTab === "stitch" ? "active" : ""}`}
-            onClick={() => setActiveTab("stitch")}
-          >
-            <Columns2 size={12} /> 拼图
-          </button>
-          <button
-            type="button"
-            className={`mode-pill ${activeTab === "translate" ? "active" : ""}`}
-            onClick={() => switchBatchTab("translate")}
-          >
-            <Languages size={12} /> 翻译
-          </button>
-          <button
-            type="button"
-            className={`mode-pill ${activeTab === "ocr" ? "active" : ""}`}
-            onClick={() => switchBatchTab("ocr")}
-          >
-            <ScanText size={12} /> 识字
-          </button>
-          <button
-            type="button"
-            className={`mode-pill ${activeTab === "ask" ? "active" : ""}`}
-            onClick={() => setActiveTab("ask")}
-          >
-            <Sparkles size={12} /> 问 AI
-          </button>
+          <SlidingSegmented<"stitch" | "translate" | "ocr" | "ask">
+            ariaLabel="叠堆工作模式"
+            size="sm"
+            className="stack-tabs-seg"
+            value={activeTab}
+            onChange={(next) => {
+              if (next === "translate" || next === "ocr") {
+                switchBatchTab(next);
+              } else {
+                setActiveTab(next);
+              }
+            }}
+            options={[
+              {
+                value: "stitch",
+                label: (
+                  <>
+                    <Columns2 size={12} /> 拼图
+                  </>
+                ),
+              },
+              {
+                value: "translate",
+                label: (
+                  <>
+                    <Languages size={12} /> 翻译
+                  </>
+                ),
+              },
+              {
+                value: "ocr",
+                label: (
+                  <>
+                    <ScanText size={12} /> 识字
+                  </>
+                ),
+              },
+              {
+                value: "ask",
+                label: (
+                  <>
+                    <Sparkles size={12} /> 问 AI
+                  </>
+                ),
+              },
+            ]}
+          />
         </div>
 
         {feedback && <div className="stack-notice">{feedback}</div>}
@@ -2412,7 +2480,13 @@ export function StackWindow() {
 
               <div className="stack-export-actions">
                 <button type="button" className="btn btn-primary" onClick={handleCopyStitched}>
-                  {copiedKey === "stitch-copy" ? <Check size={14} /> : <Copy size={14} />}
+                  {copiedKey === "stitch-copy" ? (
+                    <span className="icon-morph">
+                      <Check size={14} />
+                    </span>
+                  ) : (
+                    <Copy size={14} />
+                  )}
                   复制拼图
                 </button>
                 <button type="button" className="btn" onClick={handleSaveStitched}>
@@ -2421,7 +2495,13 @@ export function StackWindow() {
               </div>
 
               <button type="button" className="btn" style={{ width: "100%" }} onClick={handleCopyAsFiles}>
-                {copiedKey === "files" ? <Check size={14} /> : <Files size={14} />}
+                {copiedKey === "files" ? (
+                  <span className="icon-morph">
+                    <Check size={14} />
+                  </span>
+                ) : (
+                  <Files size={14} />
+                )}
                 复制为图片文件（支持多图粘贴）
               </button>
             </div>

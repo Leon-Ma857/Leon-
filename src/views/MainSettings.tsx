@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { ALT_LABEL, formatShortcutLabel, IS_MAC, MOD_LABEL, OS_LABEL } from "../utils/platform";
+import { ALT_LABEL, formatShortcutLabel, MOD_LABEL, OS_LABEL } from "../utils/platform";
 import { listenToWindow } from "../utils/windowEvents";
 import {
+  ArrowRight,
   Camera,
   Check,
   ChevronDown,
   ChevronRight,
   Clipboard,
   Copy,
+  Cpu,
   Download,
   ExternalLink,
   Eye,
@@ -17,9 +19,13 @@ import {
   History,
   Keyboard,
   Languages,
-  Search,
+  Monitor,
+  Moon,
+  RotateCcw,
   ScanLine,
-  Settings,
+  Search,
+  Sparkles,
+  Sun,
   Trash2,
   Upload,
   Volume2,
@@ -45,10 +51,13 @@ import {
 import { AskActionsSettings } from "../components/AskActionsSettings";
 import { LocalOcrSettings } from "../components/LocalOcrSettings";
 import { Popconfirm } from "../components/Popconfirm";
-import { SelectionShortcutField } from "../components/SelectionShortcutField";
+import { ShortcutRow } from "../components/ShortcutRow";
+import { SlidingSegmented } from "../components/SlidingSegmented";
 import { UpdateButton } from "./UpdateButton";
 import { UpdateDialog } from "./UpdateDialog";
 import { useAppUpdate } from "../hooks/useAppUpdate";
+
+type WorkspacePane = "shortcuts" | "engines" | "system" | "text" | "history";
 
 const DEFAULT_CONFIG: AppConfig = {
   shortcut: "Alt+Q",
@@ -76,6 +85,25 @@ const DEFAULT_CONFIG: AppConfig = {
   proxy_url: "",
   update_feed_url: "",
 };
+
+const CAPTURE_PRESETS = SHORTCUT_PRESETS.map((sc) => ({
+  value: sc,
+  label: formatShortcutLabel(sc),
+}));
+
+const CLIPBOARD_PRESETS = [
+  { value: "", label: "关闭" },
+  { value: "Alt+W", label: formatShortcutLabel("Alt+W") },
+  { value: "Ctrl+Alt+C", label: formatShortcutLabel("Ctrl+Alt+C") },
+  { value: "Ctrl+Shift+Q", label: formatShortcutLabel("Ctrl+Shift+Q") },
+];
+
+const SELECTION_PRESETS = [
+  { value: "", label: "关闭" },
+  { value: "Space", label: "Space" },
+  { value: "Tab", label: "Tab" },
+  { value: "Alt+E", label: `${ALT_LABEL}+E` },
+];
 
 function formatKeyEventToAccelerator(
   e: KeyboardEvent,
@@ -123,22 +151,29 @@ function formatKeyEventToAccelerator(
   }
 
   if (!keyName) return null;
-  // Require a modifier except F1-F12 (and Space/Tab when smart single-key selection is enabled).
   const isFnKey = /^F([1-9]|1[0-2])$/.test(keyName);
   const isSingleTrigger = allowSingleKeys && (keyName === "Space" || keyName === "Tab");
   if (mods.length === 0 && !isFnKey && !isSingleTrigger) return null;
   return [...mods, keyName].join("+");
 }
 
+function splitQuickKeycaps(shortcut: string): string[] {
+  const formatted = formatShortcutLabel(shortcut.trim());
+  return formatted ? formatted.split("+").filter(Boolean) : [];
+}
+
 export function MainSettings() {
-  const [tab, setTab] = useState<"settings" | "text" | "history">("settings");
+  const [pane, setPane] = useState<WorkspacePane>("shortcuts");
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [savedConfig, setSavedConfig] = useState<AppConfig | null>(null);
   const dirty = savedConfig !== null && JSON.stringify(config) !== JSON.stringify(savedConfig);
   const startupChanged = savedConfig !== null && config.start_minimized !== savedConfig.start_minimized;
+
   const [history, setHistory] = useState<TranslationResult[]>([]);
+  const [exitingHistoryIds, setExitingHistoryIds] = useState<Record<number, true>>({});
   const [showAiKey, setShowAiKey] = useState(false);
   const [showDeepLKey, setShowDeepLKey] = useState(false);
+  const [showPromptGlossary, setShowPromptGlossary] = useState(false);
   const [saving, setSaving] = useState(false);
   const appUpdate = useAppUpdate({ dirty: dirty || saving });
   const [testingTarget, setTestingTarget] = useState<string | null>(null);
@@ -155,12 +190,14 @@ export function MainSettings() {
   const [systemProxy, setSystemProxy] = useState<SystemProxyInfo | null>(null);
   const [proxyMode, setProxyMode] = useState<"system" | "custom">("system");
   const [showUpdateMirror, setShowUpdateMirror] = useState(false);
+
   const savedAskActionsJsonRef = useRef<string | null>(null);
   useEffect(() => {
     savedAskActionsJsonRef.current = savedConfig
       ? JSON.stringify(savedConfig.ask_quick_actions)
       : null;
   }, [savedConfig]);
+
   const [textInput, setTextInput] = useState("");
   const [textEngine, setTextEngine] = useState<TranslateEngine>("ai");
   const [textTargetLang, setTextTargetLang] = useState<string>("简体中文");
@@ -173,6 +210,24 @@ export function MainSettings() {
 
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null);
   const [configLoadError, setConfigLoadError] = useState<string | null>(null);
+
+  const toastTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    if (status.text && status.kind === "ok") {
+      toastTimerRef.current = window.setTimeout(() => {
+        setStatus({ kind: "idle", text: "" });
+      }, 3200);
+    }
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, [status]);
 
   const loadHistory = async () => {
     try {
@@ -215,6 +270,7 @@ export function MainSettings() {
         setSavedConfig(cfg);
         setProxyMode(cfg.proxy_url.trim() ? "custom" : "system");
         setShowUpdateMirror(Boolean(cfg.update_feed_url.trim()));
+        setShowPromptGlossary(Boolean(cfg.custom_prompt.trim() || cfg.glossary.trim()));
         setConfigLoadError(null);
         setTextEngine(cfg.translate_engine);
         setTextTargetLang(cfg.target_lang);
@@ -323,19 +379,25 @@ export function MainSettings() {
           setConfig((prev) => ({ ...prev, clipboard_shortcut: formatted }));
         }
         setRecordingTarget(null);
-        setStatus({ kind: "ok", text: `已录制快捷键 ${formatted}，点击保存即可生效` });
+        setStatus({ kind: "ok", text: `已录制 ${formatShortcutLabel(formatted)}，保存后生效` });
       } else if (!["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
         setStatus({
           kind: "err",
           text: allowSingle
-            ? `划词快捷键需使用单键 Space / Tab、F1-F12 或 ${MOD_LABEL} / ${ALT_LABEL} / Shift 组合键`
-            : `快捷键需搭配 ${MOD_LABEL} / ${ALT_LABEL} / Shift 组合键或 F1-F12`,
+            ? `划词键需为 Space / Tab、F1-F12 或 ${MOD_LABEL} / ${ALT_LABEL} / Shift 组合键`
+            : `快捷键需搭配 ${MOD_LABEL} / ${ALT_LABEL} / Shift 或 F1-F12`,
         });
       }
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [recordingTarget]);
+
+  const applyThemeSelection = (nextTheme: ThemeMode) => {
+    setConfig((prev) => ({ ...prev, theme: nextTheme }));
+    document.documentElement.dataset.theme = nextTheme;
+    invoke("preview_theme", { theme: nextTheme }).catch(console.error);
+  };
 
   const handleSave = async () => {
     if (saving || !dirty) return;
@@ -356,11 +418,22 @@ export function MainSettings() {
     }
   };
 
+  const handleDiscard = () => {
+    if (!savedConfig) return;
+    setConfig(savedConfig);
+    setProxyMode(savedConfig.proxy_url.trim() ? "custom" : "system");
+    setShowUpdateMirror(Boolean(savedConfig.update_feed_url.trim()));
+    document.documentElement.dataset.theme =
+      savedConfig.theme === "light" || savedConfig.theme === "dark" ? savedConfig.theme : "system";
+    invoke("preview_theme", { theme: savedConfig.theme }).catch(console.error);
+    setStatus({ kind: "ok", text: "已放弃未保存更改" });
+  };
+
   const handleSaveRef = useRef(handleSave);
   handleSaveRef.current = handleSave;
 
   useEffect(() => {
-    if (tab !== "settings" || recordingTarget) return;
+    if (recordingTarget) return;
     const onSaveKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
@@ -369,13 +442,13 @@ export function MainSettings() {
     };
     window.addEventListener("keydown", onSaveKey);
     return () => window.removeEventListener("keydown", onSaveKey);
-  }, [tab, recordingTarget]);
+  }, [recordingTarget]);
 
   const handleTest = async (target: "ai" | "google" | "deepl" | "update") => {
     setTestingTarget(target);
     setStatus({
       kind: "idle",
-      text: target === "update" ? "正在测试代理与更新源连通性..." : "正在测试接口连通性...",
+      text: target === "update" ? "正在测试代理与更新源…" : "正在测试连接…",
     });
     if (target === "update") {
       invoke<SystemProxyInfo>("get_system_proxy_info")
@@ -457,6 +530,7 @@ export function MainSettings() {
         setSavedConfig(imported);
         setProxyMode(imported.proxy_url.trim() ? "custom" : "system");
         setShowUpdateMirror(Boolean(imported.update_feed_url.trim()));
+        setShowPromptGlossary(Boolean(imported.custom_prompt.trim() || imported.glossary.trim()));
         setTextEngine(imported.translate_engine);
         setTextTargetLang(imported.target_lang);
         setStatus({ kind: "ok", text: "已导入配置并立即生效" });
@@ -478,7 +552,7 @@ export function MainSettings() {
       try {
         sameOrigin = new URL(prev.api_base_url).origin === new URL(baseUrl).origin;
       } catch {
-        // An incomplete URL has no origin to retain a key for.
+        // Incomplete URL has no origin to retain a key for.
       }
       return {
         ...prev,
@@ -492,15 +566,30 @@ export function MainSettings() {
   const copyHistory = async (item: TranslationResult) => {
     await navigator.clipboard.writeText(item.translatedText);
     setCopiedId(item.id);
-    setTimeout(() => setCopiedId(null), 1400);
+    setTimeout(() => setCopiedId((cur) => (cur === item.id ? null : cur)), 1400);
   };
 
   const deleteHistoryItem = async (id: number) => {
+    if (exitingHistoryIds[id]) return;
+    setExitingHistoryIds((prev) => ({ ...prev, [id]: true }));
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!reduced) {
+      await new Promise((r) => window.setTimeout(r, 175));
+    }
     try {
       const next = await invoke<TranslationResult[]>("delete_history_item", { id });
       setHistory(next);
     } catch (err) {
       setStatus({ kind: "err", text: String(err) });
+    } finally {
+      setExitingHistoryIds((prev) => {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     }
   };
 
@@ -510,7 +599,7 @@ export function MainSettings() {
       if (ok) {
         setStatus({
           kind: "ok",
-          text: `已导出历史记录 (${format === "json" ? "JSON" : "Markdown"})`,
+          text: `已导出历史 (${format === "json" ? "JSON" : "Markdown"})`,
         });
       }
     } catch (err) {
@@ -547,123 +636,209 @@ export function MainSettings() {
     }
   };
 
+  const selectionNormalized = config.selection_shortcut.trim().toLowerCase();
+  const isSmartSingleSelection =
+    selectionNormalized === "space" || selectionNormalized === "tab";
+
+  const activeCaptureCaps = splitQuickKeycaps(
+    shortcutStatus?.active ? shortcutStatus.shortcut : config.shortcut
+  );
+  const activeClipCaps = splitQuickKeycaps(
+    shortcutStatus?.clipboardShortcut || config.clipboard_shortcut
+  );
+
+  const cycleQuickTheme = () => {
+    const order: ThemeMode[] = ["light", "dark", "system"];
+    const next = order[(order.indexOf(config.theme) + 1) % order.length];
+    applyThemeSelection(next);
+  };
+
+  const themeIcon =
+    config.theme === "dark" ? (
+      <Moon size={13} />
+    ) : config.theme === "light" ? (
+      <Sun size={13} />
+    ) : (
+      <Monitor size={13} />
+    );
+
+  const themeLabel =
+    config.theme === "dark" ? "夜间" : config.theme === "light" ? "浅色" : "跟随系统";
+
+  const glossaryCount = config.glossary
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && (l.includes("=") || l.includes("=>"))).length;
+
   return (
-    <div className="main-shell">
-      <header className="topbar">
-        <div className="brand">
+    <div className="v3-app-shell">
+      {/* ==================== Left Navigation Sidebar ==================== */}
+      <aside className="v3-sidebar" aria-label="主导航">
+        <div className="sidebar-brand">
           <div className="brand-badge">
-            <ScanLine size={19} aria-hidden="true" />
+            <ScanLine size={16} aria-hidden="true" />
           </div>
-          <div>
-            <div className="brand-title">
-              Luma
-              {appVersion && <span className="brand-tag">v{appVersion}</span>}
+          <div className="sidebar-brand-text">
+            <div className="sidebar-brand-row">
+              <span className="sidebar-brand-name">Luma</span>
+              {appVersion && <span className="sidebar-ver">v{appVersion}</span>}
             </div>
-            <div className="brand-sub">
-              截图 {shortcutStatus?.active ? <kbd>{shortcutStatus.shortcut}</kbd> : "快捷键未启用"}
+            <div className="sidebar-hotkey-status">
+              <span
+                className={`ready-dot${shortcutStatus?.active ? " on" : ""}`}
+                aria-hidden="true"
+              />
+              <span>
+                {shortcutStatus?.active ? "热键就绪" : "等待就绪"}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="topbar-actions">
-          <UpdateButton update={appUpdate} />
+        <div className="sidebar-cta-stack">
           <button
             type="button"
-            className="btn"
-            onClick={handleClipboardImage}
-            title="翻译剪贴板中的图片"
-          >
-            <Clipboard size={14} /> 译剪贴板
-          </button>
-
-          <button
-            type="button"
-            className="btn btn-dark"
+            className="btn btn-primary sidebar-cta-btn"
             onClick={handleCaptureNow}
           >
-            <Camera size={14} /> 截图
+            <span className="sidebar-cta-left">
+              <Camera size={14} /> 截图
+            </span>
+            {activeCaptureCaps.length > 0 && (
+              <span className="sidebar-cta-kbds">
+                {activeCaptureCaps.map((k, i) => (
+                  <kbd key={`${k}-${i}`} className="kbd-cap kbd-cap-inv">
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            className="btn sidebar-cta-btn sidebar-cta-sub"
+            onClick={handleClipboardImage}
+            title="识别并翻译剪贴板中的图片"
+          >
+            <span className="sidebar-cta-left">
+              <Clipboard size={13} /> 译剪贴板
+            </span>
+            {activeClipCaps.length > 0 && (
+              <span className="sidebar-cta-kbds">
+                {activeClipCaps.map((k, i) => (
+                  <kbd key={`${k}-${i}`} className="kbd-cap">
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+            )}
           </button>
         </div>
-      </header>
-      <nav className="main-nav" aria-label="主窗口">
-        <button
-          type="button"
-          className={`seg-btn ${tab === "settings" ? "active" : ""}`}
-          aria-current={tab === "settings" ? "page" : undefined}
-          onClick={() => setTab("settings")}
-        >
-          <Settings size={13} /> 设置
-        </button>
-        <button
-          type="button"
-          className={`seg-btn ${tab === "text" ? "active" : ""}`}
-          aria-current={tab === "text" ? "page" : undefined}
-          onClick={() => setTab("text")}
-        >
-          <Languages size={13} /> 翻译
-        </button>
-        <button
-          type="button"
-          className={`seg-btn ${tab === "history" ? "active" : ""}`}
-          aria-current={tab === "history" ? "page" : undefined}
-          onClick={() => {
-            setTab("history");
-            loadHistory();
-          }}
-        >
-          <History size={13} /> 历史 ({history.length})
-        </button>
-      </nav>
 
-      <main className="main-content">
-        {tab === "settings" ? (
-          <div className="settings-grid settings-form" aria-busy={saving}>
-            {/* Section 1: Shortcut & Interaction */}
-            <section className="card">
-              <div className="card-title">
-                <span>快捷键与常规</span>
-              </div>
+        <nav className="sidebar-nav">
+          <div className="sidebar-group">
+            <div className="sidebar-group-title">工作台</div>
+            <button
+              type="button"
+              className={`sidebar-nav-item${pane === "text" ? " active" : ""}`}
+              aria-current={pane === "text" ? "page" : undefined}
+              onClick={() => setPane("text")}
+            >
+              <span className="sidebar-nav-left">
+                <Languages size={14} />
+                <span>翻译</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`sidebar-nav-item${pane === "history" ? " active" : ""}`}
+              aria-current={pane === "history" ? "page" : undefined}
+              onClick={() => {
+                setPane("history");
+                loadHistory();
+              }}
+            >
+              <span className="sidebar-nav-left">
+                <History size={14} />
+                <span>历史</span>
+              </span>
+              <span className="sidebar-nav-badge">{history.length}</span>
+            </button>
+          </div>
 
-              <div className="field-row">
-                <div className="field">
-                  <label>
-                    截图快捷键
-                    {shortcutStatus &&
-                      config.shortcut.trim() !== shortcutStatus.shortcut && (
-                        <span className="unsaved-hint">
-                          未保存（当前：{shortcutStatus.shortcut}）
-                        </span>
-                      )}
-                  </label>
-                  <div className="input-with-btn">
-                    <input
-                      className="input"
-                      value={recordingTarget === "capture" ? "按下组合键（Esc 取消）" : config.shortcut}
-                      readOnly={recordingTarget === "capture"}
-                      onChange={(e) =>
-                        setConfig({ ...config, shortcut: e.target.value })
-                      }
-                      placeholder={
-                        IS_MAC ? "如 Option+Q" : "如 Alt+Q"
-                      }
-                    />
-                    <button
-                      type="button"
-                      className={`btn ${recordingTarget === "capture" ? "btn-primary" : ""}`}
-                      onClick={() =>
-                        setRecordingTarget((v) => (v === "capture" ? null : "capture"))
-                      }
-                      title="录制截图快捷键"
-                    >
-                      <Keyboard size={14} />
-                      {recordingTarget === "capture" ? "取消" : "录制"}
-                    </button>
-                  </div>
+          <div className="sidebar-group">
+            <div className="sidebar-group-title">设置</div>
+            <button
+              type="button"
+              className={`sidebar-nav-item${pane === "shortcuts" ? " active" : ""}`}
+              aria-current={pane === "shortcuts" ? "page" : undefined}
+              onClick={() => setPane("shortcuts")}
+            >
+              <span className="sidebar-nav-left">
+                <Keyboard size={14} />
+                <span>快捷键</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`sidebar-nav-item${pane === "engines" ? " active" : ""}`}
+              aria-current={pane === "engines" ? "page" : undefined}
+              onClick={() => setPane("engines")}
+            >
+              <span className="sidebar-nav-left">
+                <Sparkles size={14} />
+                <span>翻译引擎</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`sidebar-nav-item${pane === "system" ? " active" : ""}`}
+              aria-current={pane === "system" ? "page" : undefined}
+              onClick={() => setPane("system")}
+            >
+              <span className="sidebar-nav-left">
+                <Cpu size={14} />
+                <span>识别与外观</span>
+              </span>
+            </button>
+          </div>
+        </nav>
+
+        <div className="sidebar-footer">
+          <UpdateButton update={appUpdate} variant="sidebar" />
+          <button
+            type="button"
+            className="sidebar-theme-btn"
+            onClick={cycleQuickTheme}
+            title="切换浅色 / 夜间 / 跟随系统（即时预览）"
+          >
+            <span className="sidebar-update-left">
+              {themeIcon}
+              <span>外观：{themeLabel}</span>
+            </span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ==================== Right Workspace Canvas ==================== */}
+      <main className="v3-workspace" aria-busy={saving}>
+        <div className="v3-workspace-scroll">
+          {/* PANE 1: SHORTCUTS & INTERACTION */}
+          {pane === "shortcuts" && (
+            <div key="shortcuts" className="v3-pane">
+              <div className="v3-pane-head">
+                <div>
+                  <h1 className="v3-pane-title">快捷键</h1>
+                  <p className="v3-pane-sub">点击键帽即可录制，按 Esc 取消</p>
                 </div>
-                <div className="field">
-                  <label>目标语言</label>
+                <div className="v3-head-control">
+                  <label className="v3-inline-label" htmlFor="default-target-lang">
+                    目标语言
+                  </label>
                   <select
-                    className="select"
+                    id="default-target-lang"
+                    className="select v3-compact-select"
                     value={config.target_lang}
                     onChange={(e) =>
                       setConfig({ ...config, target_lang: e.target.value })
@@ -678,570 +853,616 @@ export function MainSettings() {
                 </div>
               </div>
 
-              <div className="chip-row">
-                {SHORTCUT_PRESETS.map((sc) => (
-                  <button
-                    key={sc}
-                    type="button"
-                    className={`chip ${config.shortcut === sc ? "active" : ""}`}
-                    onClick={() => setConfig({ ...config, shortcut: sc })}
-                  >
-                    {formatShortcutLabel(sc)}
-                  </button>
-                ))}
-              </div>
+              {configLoadError && <div className="error-box">{configLoadError}</div>}
 
-              <div className="field" style={{ marginTop: 12 }}>
-                <label>
-                  剪贴板速译
-                  {shortcutStatus &&
-                    config.clipboard_shortcut.trim() !==
-                      (shortcutStatus.clipboardShortcut ?? "") && (
-                      <span className="unsaved-hint">
-                        未保存
-                      </span>
-                    )}
-                </label>
-                <div className="input-with-btn">
-                  <input
-                    className="input"
-                    value={
-                      recordingTarget === "clipboard"
-                        ? "按下组合键（Esc 取消）"
-                        : config.clipboard_shortcut
+              <section className="card v3-card">
+                <div className="card-title">
+                  <span>全局快捷键</span>
+                </div>
+
+                <ShortcutRow
+                  label="截图快捷键"
+                  desc="唤起无遮罩框选截图，按住 Tab 原位译文"
+                  value={config.shortcut}
+                  savedValue={shortcutStatus?.shortcut}
+                  recording={recordingTarget === "capture"}
+                  presets={CAPTURE_PRESETS}
+                  error={
+                    shortcutStatus && !shortcutStatus.active && shortcutStatus.error
+                      ? shortcutStatus.error
+                      : null
+                  }
+                  onChange={(next) => setConfig((prev) => ({ ...prev, shortcut: next }))}
+                  onToggleRecord={() =>
+                    setRecordingTarget((v) => (v === "capture" ? null : "capture"))
+                  }
+                />
+
+                <ShortcutRow
+                  label="剪贴板速译"
+                  desc="复制文字后一键浮窗翻译"
+                  value={config.clipboard_shortcut}
+                  savedValue={shortcutStatus?.clipboardShortcut ?? ""}
+                  recording={recordingTarget === "clipboard"}
+                  optional
+                  presets={CLIPBOARD_PRESETS}
+                  error={shortcutStatus?.clipboardError ?? null}
+                  onChange={(next) =>
+                    setConfig((prev) => ({ ...prev, clipboard_shortcut: next }))
+                  }
+                  onToggleRecord={() =>
+                    setRecordingTarget((v) => (v === "clipboard" ? null : "clipboard"))
+                  }
+                />
+
+                <ShortcutRow
+                  label="划词翻译"
+                  desc="选中任意软件文字后轻按即译"
+                  value={config.selection_shortcut}
+                  savedValue={shortcutStatus?.selectionShortcut ?? ""}
+                  recording={recordingTarget === "selection"}
+                  recordingPrompt="按下快捷键（支持 Space / Tab）"
+                  optional
+                  presets={SELECTION_PRESETS}
+                  hint={
+                    isSmartSingleSelection
+                      ? `选中文字后轻按 ${selectionNormalized === "space" ? "Space" : "Tab"} 即可翻译，正常输入与全屏游戏自动避让。`
+                      : null
+                  }
+                  error={shortcutStatus?.selectionError ?? null}
+                  onChange={(next) =>
+                    setConfig((prev) => ({ ...prev, selection_shortcut: next }))
+                  }
+                  onToggleRecord={() =>
+                    setRecordingTarget((v) => (v === "selection" ? null : "selection"))
+                  }
+                />
+              </section>
+
+              <section className="card v3-card">
+                <div className="card-title">
+                  <span>交互与叠堆</span>
+                </div>
+
+                <div className="setting-row">
+                  <div>
+                    <div className="s-label">框选后自动翻译</div>
+                    <div className="s-desc">松开鼠标直接弹出译文，无需再点按钮</div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="框选后自动翻译"
+                    aria-checked={config.auto_translate_on_release}
+                    className={`ios-switch ${config.auto_translate_on_release ? "on" : ""}`}
+                    onClick={() =>
+                      setConfig({
+                        ...config,
+                        auto_translate_on_release: !config.auto_translate_on_release,
+                      })
                     }
-                    readOnly={recordingTarget === "clipboard"}
-                    onChange={(e) =>
-                      setConfig({ ...config, clipboard_shortcut: e.target.value })
+                  >
+                    <span className="ios-switch-thumb" />
+                  </button>
+                </div>
+
+                <div className="setting-row">
+                  <div>
+                    <div className="s-label">叠堆上限</div>
+                    <div className="s-desc">右下角暂存卡片最多保留张数</div>
+                  </div>
+                  <SlidingSegmented<string>
+                    ariaLabel="叠堆上限"
+                    size="sm"
+                    value={String(config.max_stack_size)}
+                    onChange={(val) =>
+                      setConfig({ ...config, max_stack_size: Number(val) })
                     }
-                    placeholder={
-                      IS_MAC
-                        ? "留空禁用，如 Option+W"
-                        : "留空禁用，如 Alt+W"
-                    }
+                    options={[4, 6, 8, 12].map((n) => ({
+                      value: String(n),
+                      label: `${n} 张`,
+                    }))}
                   />
+                </div>
+
+                <div className="setting-row">
+                  <div>
+                    <div className="s-label">导出后清空叠堆</div>
+                    <div className="s-desc">复制或保存拼图后自动释放暂存队列</div>
+                  </div>
                   <button
                     type="button"
-                    className={`btn ${recordingTarget === "clipboard" ? "btn-primary" : ""}`}
+                    role="switch"
+                    aria-label="导出后清空叠堆"
+                    aria-checked={config.clear_stack_after_output}
+                    className={`ios-switch ${config.clear_stack_after_output ? "on" : ""}`}
                     onClick={() =>
-                      setRecordingTarget((v) => (v === "clipboard" ? null : "clipboard"))
+                      setConfig({
+                        ...config,
+                        clear_stack_after_output: !config.clear_stack_after_output,
+                      })
                     }
-                    title="录制剪贴板速译快捷键"
                   >
-                    <Keyboard size={14} />
-                    {recordingTarget === "clipboard" ? "取消" : "录制"}
+                    <span className="ios-switch-thumb" />
                   </button>
-                  {config.clipboard_shortcut && (
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => setConfig({ ...config, clipboard_shortcut: "" })}
-                      title="清除快捷键"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
                 </div>
-                <div className="chip-row">
-                  {["", "Alt+W", "Ctrl+Alt+C", "Ctrl+Shift+Q"].map((sc) => (
-                    <button
-                      key={sc || "none"}
-                      type="button"
-                      className={`chip ${config.clipboard_shortcut === sc ? "active" : ""}`}
-                      onClick={() => setConfig({ ...config, clipboard_shortcut: sc })}
-                    >
-                      {sc ? formatShortcutLabel(sc) : "关闭"}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <SelectionShortcutField
-                value={config.selection_shortcut}
-                savedValue={shortcutStatus?.selectionShortcut ?? ""}
-                recording={recordingTarget === "selection"}
-                error={shortcutStatus?.selectionError ?? null}
-                onChange={(next) =>
-                  setConfig((prev) => ({ ...prev, selection_shortcut: next }))
-                }
-                onToggleRecord={() =>
-                  setRecordingTarget((v) => (v === "selection" ? null : "selection"))
-                }
-              />
-
-              {shortcutStatus && !shortcutStatus.active && shortcutStatus.error && (
-                <div className="error-box" style={{ marginTop: 10 }}>
-                  {shortcutStatus.error}
-                </div>
-              )}
-              {shortcutStatus && shortcutStatus.clipboardError && (
-                <div className="error-box" style={{ marginTop: 8 }}>
-                  {shortcutStatus.clipboardError}
-                </div>
-              )}
-
-              <div className="switch-row">
-                <div>
-                  <div className="switch-label">框选后自动翻译</div>
-                  <div className="switch-desc">松开鼠标直接翻译</div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label="框选后自动翻译"
-                  aria-checked={config.auto_translate_on_release}
-                  className={`ios-switch ${config.auto_translate_on_release ? "on" : ""}`}
-                  onClick={() =>
-                    setConfig({
-                      ...config,
-                      auto_translate_on_release: !config.auto_translate_on_release,
-                    })
-                  }
-                >
-                  <span className="ios-switch-thumb" />
-                </button>
-              </div>
-
-              <div className="switch-row">
-                <div>
-                  <div className="switch-label">静默启动</div>
-                  <div className="switch-desc">启动后最小化到托盘</div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label="静默启动"
-                  aria-checked={config.start_minimized}
-                  className={`ios-switch ${config.start_minimized ? "on" : ""}`}
-                  onClick={() =>
-                    setConfig({
-                      ...config,
-                      start_minimized: !config.start_minimized,
-                    })
-                  }
-                >
-                  <span className="ios-switch-thumb" />
-                </button>
-              </div>
-
-              <div className="switch-row">
-                <div>
-                  <div className="switch-label">开机自启</div>
-                  <div className="switch-desc">登录 {OS_LABEL} 时自动运行</div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label="开机自启"
-                  aria-checked={config.launch_at_startup}
-                  className={`ios-switch ${config.launch_at_startup ? "on" : ""}`}
-                  onClick={() =>
-                    setConfig({
-                      ...config,
-                      launch_at_startup: !config.launch_at_startup,
-                    })
-                  }
-                >
-                  <span className="ios-switch-thumb" />
-                </button>
-              </div>
-
-              <div className="switch-row">
-                <div>
-                  <div className="switch-label">叠堆上限</div>
-                  <div className="switch-desc">右下角暂存卡片上限</div>
-                </div>
-                <div className="chip-row" style={{ marginTop: 0 }}>
-                  {[4, 6, 8, 12].map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      className={`chip ${config.max_stack_size === n ? "active" : ""}`}
-                      onClick={() => setConfig({ ...config, max_stack_size: n })}
-                    >
-                      {n} 张
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="switch-row">
-                <div>
-                  <div className="switch-label">导出后清空叠堆</div>
-                  <div className="switch-desc">复制或保存拼图后自动清空</div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label="导出后清空叠堆"
-                  aria-checked={config.clear_stack_after_output}
-                  className={`ios-switch ${config.clear_stack_after_output ? "on" : ""}`}
-                  onClick={() =>
-                    setConfig({
-                      ...config,
-                      clear_stack_after_output: !config.clear_stack_after_output,
-                    })
-                  }
-                >
-                  <span className="ios-switch-thumb" />
-                </button>
-              </div>
-
-              <div className="switch-row">
-                <div>
-                  <div className="switch-label">外观</div>
-                  <div className="switch-desc">深浅色模式，全窗口同步</div>
-                </div>
-                <div className="chip-row" style={{ marginTop: 0 }}>
-                  {(
-                    [
-                      { id: "system", label: "跟随系统" },
-                      { id: "light", label: "浅色" },
-                      { id: "dark", label: "深色" },
-                    ] as { id: ThemeMode; label: string }[]
-                  ).map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      className={`chip ${config.theme === t.id ? "active" : ""}`}
-                      onClick={() => {
-                        setConfig({ ...config, theme: t.id });
-                        document.documentElement.dataset.theme = t.id;
-                        invoke("preview_theme", { theme: t.id }).catch(console.error);
-                      }}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            {/* Section 2: Translation Engines (AI / Google / DeepL) */}
-            <section className="card">
-              <div className="card-title">
-                <span>翻译引擎</span>
-                <span className="card-subtitle">浮窗内可随时切换</span>
-              </div>
-
-              <div className="engine-cards">
-                {ENGINE_OPTIONS.map((eng) => (
+                <div className="setting-row">
+                  <div>
+                    <div className="s-label">静默启动</div>
+                    <div className="s-desc">启动后直接驻留系统托盘，不弹窗打扰</div>
+                  </div>
                   <button
-                    key={eng.id}
                     type="button"
-                    className={`engine-card ${
-                      config.translate_engine === eng.id ? "active" : ""
-                    }`}
+                    role="switch"
+                    aria-label="静默启动"
+                    aria-checked={config.start_minimized}
+                    className={`ios-switch ${config.start_minimized ? "on" : ""}`}
                     onClick={() =>
-                      setConfig({ ...config, translate_engine: eng.id })
+                      setConfig({
+                        ...config,
+                        start_minimized: !config.start_minimized,
+                      })
                     }
                   >
-                    <div className="engine-card-title">{eng.label}</div>
-                    <div className="engine-card-desc">{eng.desc}</div>
+                    <span className="ios-switch-thumb" />
                   </button>
-                ))}
+                </div>
+
+                <div className="setting-row">
+                  <div>
+                    <div className="s-label">开机自启</div>
+                    <div className="s-desc">登录 {OS_LABEL} 时自动运行</div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="开机自启"
+                    aria-checked={config.launch_at_startup}
+                    className={`ios-switch ${config.launch_at_startup ? "on" : ""}`}
+                    onClick={() =>
+                      setConfig({
+                        ...config,
+                        launch_at_startup: !config.launch_at_startup,
+                      })
+                    }
+                  >
+                    <span className="ios-switch-thumb" />
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {/* PANE 2: ENGINES & AI */}
+          {pane === "engines" && (
+            <div key="engines" className="v3-pane">
+              <div className="v3-pane-head">
+                <div>
+                  <h1 className="v3-pane-title">翻译引擎</h1>
+                  <p className="v3-pane-sub">默认引擎、视觉模型与快捷指令</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => handleTest(config.translate_engine)}
+                  disabled={testingTarget !== null}
+                >
+                  <Zap size={13} />
+                  {testingTarget === config.translate_engine ? "测试中…" : "测试当前引擎"}
+                </button>
               </div>
 
-              <div className="field-row">
-                <div className="field">
-                  <label>Google Key（可选）</label>
-                  <div className="input-with-btn">
-                    <input
-                      className="input"
-                      type="password"
-                      value={config.google_api_key}
-                      onChange={(e) =>
-                        setConfig({ ...config, google_api_key: e.target.value })
-                      }
-                      placeholder="留空使用免费接口"
-                    />
+              <section className="card v3-card">
+                <div className="card-title">
+                  <span>默认翻译引擎</span>
+                </div>
+
+                <div className="engine-cards">
+                  {ENGINE_OPTIONS.map((eng) => {
+                    const active = config.translate_engine === eng.id;
+                    return (
+                      <button
+                        key={eng.id}
+                        type="button"
+                        className={`engine-card${active ? " active" : ""}`}
+                        onClick={() =>
+                          setConfig({ ...config, translate_engine: eng.id })
+                        }
+                      >
+                        <div className="engine-card-top">
+                          <span className="engine-card-title">{eng.label}</span>
+                          {active && <Check size={13} className="engine-card-check" />}
+                        </div>
+                        <div className="engine-card-desc">{eng.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {config.translate_engine === "google" && (
+                  <div className="v3-quiet-bar">
+                    <span>Google 翻译免配置直连，可在「识别与外观」中配置网络代理。</span>
                     <button
                       type="button"
-                      className="btn"
+                      className="btn btn-sm"
                       onClick={() => handleTest("google")}
                       disabled={testingTarget !== null}
-                      title="测试 Google 翻译连接"
                     >
-                      <Zap size={14} />
-                      {testingTarget === "google" ? "…" : "测试"}
+                      <Zap size={12} /> {testingTarget === "google" ? "…" : "测试"}
                     </button>
+                  </div>
+                )}
+
+                {(config.translate_engine === "deepl" || config.deepl_api_key.trim()) && (
+                  <div className="field" style={{ marginTop: 4 }}>
+                    <label>DeepL API Key（支持 Free / Pro）</label>
+                    <div className="input-with-btn">
+                      <input
+                        className="input"
+                        type={showDeepLKey ? "text" : "password"}
+                        value={config.deepl_api_key}
+                        onChange={(e) =>
+                          setConfig({ ...config, deepl_api_key: e.target.value })
+                        }
+                        placeholder="xxxxxxxx-xxxx-...:fx"
+                      />
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => setShowDeepLKey((v) => !v)}
+                        title={showDeepLKey ? "隐藏" : "显示"}
+                      >
+                        {showDeepLKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => handleTest("deepl")}
+                        disabled={testingTarget !== null}
+                      >
+                        <Zap size={13} />
+                        {testingTarget === "deepl" ? "…" : "测试"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <section className="card v3-card">
+                <div className="card-title">
+                  <span>视觉 AI 模型</span>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => handleTest("ai")}
+                    disabled={testingTarget !== null}
+                  >
+                    <Zap size={12} />
+                    {testingTarget === "ai" ? "测试中…" : "测试 AI"}
+                  </button>
+                </div>
+
+                <div className="shortcut-preset-row" style={{ marginTop: -2, marginBottom: 10 }}>
+                  <span className="shortcut-preset-caption">预设</span>
+                  {PROVIDER_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`kbd-preset-btn${config.api_base_url === p.baseUrl ? " active" : ""}`}
+                      onClick={() => changeAiEndpoint(p.baseUrl, p.defaultModel)}
+                      title={p.hint}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="field-row">
+                  <div className="field">
+                    <label>接口地址</label>
+                    <input
+                      className="input"
+                      value={config.api_base_url}
+                      onChange={(e) => changeAiEndpoint(e.target.value)}
+                      placeholder="https://api.openai.com/v1"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>模型</label>
+                    <input
+                      className="input"
+                      value={config.model}
+                      onChange={(e) =>
+                        setConfig({ ...config, model: e.target.value })
+                      }
+                      placeholder="gpt-4o-mini"
+                    />
                   </div>
                 </div>
 
                 <div className="field">
-                  <label>DeepL Key</label>
+                  <label>API Key</label>
                   <div className="input-with-btn">
                     <input
                       className="input"
-                      type={showDeepLKey ? "text" : "password"}
-                      value={config.deepl_api_key}
+                      type={showAiKey ? "text" : "password"}
+                      value={config.api_key}
                       onChange={(e) =>
-                        setConfig({ ...config, deepl_api_key: e.target.value })
+                        setConfig({ ...config, api_key: e.target.value })
                       }
-                      placeholder="Free (:fx) 或 Pro Key"
+                      placeholder="sk-...（本地 Ollama 可留空）"
                     />
                     <button
                       type="button"
                       className="btn"
-                      onClick={() => setShowDeepLKey((v) => !v)}
-                      title={showDeepLKey ? "隐藏" : "显示"}
+                      onClick={() => setShowAiKey((v) => !v)}
+                      title={showAiKey ? "隐藏" : "显示"}
                     >
-                      {showDeepLKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => handleTest("deepl")}
-                      disabled={testingTarget !== null}
-                      title="测试 DeepL 连接"
-                    >
-                      <Zap size={14} />
-                      {testingTarget === "deepl" ? "…" : "测试"}
+                      {showAiKey ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Section 3: Vision AI Model (OCR + AI Translate + Ask AI) */}
-            <section className="card">
-              <div className="card-title">
-                <span>视觉 AI</span>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={() => handleTest("ai")}
-                  disabled={testingTarget !== null}
-                >
-                  <Zap size={13} />
-                  {testingTarget === "ai" ? "测试中…" : "测试连接"}
-                </button>
-              </div>
-
-              <div className="chip-row">
-                {PROVIDER_PRESETS.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className={`chip ${
-                      config.api_base_url === p.baseUrl ? "active" : ""
-                    }`}
-                    onClick={() => changeAiEndpoint(p.baseUrl, p.defaultModel)}
-                    title={p.hint}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="field-row">
-                <div className="field">
-                  <label>接口地址</label>
-                  <input
-                    className="input"
-                    value={config.api_base_url}
-                    onChange={(e) => changeAiEndpoint(e.target.value)}
-                    placeholder="https://api.openai.com/v1"
-                  />
-                </div>
-                <div className="field">
-                  <label>模型</label>
-                  <input
-                    className="input"
-                    value={config.model}
-                    onChange={(e) =>
-                      setConfig({ ...config, model: e.target.value })
-                    }
-                    placeholder="gpt-4o-mini"
-                  />
-                  <small>
-                    纯文本模型自动走本地识字，视觉模型直接看图。
+                  <small className="v3-field-hint">
+                    纯文本模型自动走本地识字，多模态视觉模型直接看图。
                   </small>
                 </div>
-              </div>
 
-              <div className="field">
-                <label>API Key</label>
-                <div className="input-with-btn">
-                  <input
-                    className="input"
-                    type={showAiKey ? "text" : "password"}
-                    value={config.api_key}
-                    onChange={(e) =>
-                      setConfig({ ...config, api_key: e.target.value })
-                    }
-                    placeholder="sk-...（本地 Ollama 可留空）"
-                  />
+                <div className="v3-disclosure-block">
                   <button
                     type="button"
-                    className="btn"
-                    onClick={() => setShowAiKey((v) => !v)}
-                    title={showAiKey ? "隐藏" : "显示"}
+                    className="settings-disclosure-btn"
+                    aria-expanded={showPromptGlossary}
+                    onClick={() => setShowPromptGlossary((v) => !v)}
                   >
-                    {showAiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                    {showPromptGlossary ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                    <span>翻译偏好与术语表</span>
+                    {glossaryCount > 0 && (
+                      <span className="v3-mini-badge">{glossaryCount} 条术语</span>
+                    )}
                   </button>
+                  {showPromptGlossary && (
+                    <div className="v3-disclosure-body">
+                      <div className="field">
+                        <label>翻译偏好（可选）</label>
+                        <textarea
+                          className="textarea"
+                          rows={2}
+                          value={config.custom_prompt}
+                          onChange={(e) =>
+                            setConfig({ ...config, custom_prompt: e.target.value })
+                          }
+                          placeholder="如：保留代码标识符与专有名词"
+                        />
+                      </div>
+                      <div className="field">
+                        <label>术语表</label>
+                        <textarea
+                          className="textarea"
+                          rows={3}
+                          value={config.glossary}
+                          onChange={(e) =>
+                            setConfig({ ...config, glossary: e.target.value })
+                          }
+                          placeholder={"每行一条，支持 = 或 =>\nLuma = Luma\nLLM = 大语言模型"}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              </section>
 
-              <div className="field">
-                <label>翻译偏好（可选）</label>
-                <textarea
-                  className="textarea"
-                  rows={2}
-                  value={config.custom_prompt}
-                  onChange={(e) =>
-                    setConfig({ ...config, custom_prompt: e.target.value })
-                  }
-                  placeholder="如：保留代码标识符与专有名词"
-                />
-              </div>
+              <AskActionsSettings
+                actions={config.ask_quick_actions}
+                onChange={(next) =>
+                  setConfig((prev) => ({ ...prev, ask_quick_actions: next }))
+                }
+              />
+            </div>
+          )}
 
-              <div className="field">
-                <label>术语表</label>
-                <textarea
-                  className="textarea"
-                  rows={3}
-                  value={config.glossary}
-                  onChange={(e) =>
-                    setConfig({ ...config, glossary: e.target.value })
-                  }
-                  placeholder={"每行一条，支持 = 或 =>\nLuma = Luma\nLLM = 大语言模型"}
-                />
-              </div>
-            </section>
-
-            <AskActionsSettings
-              actions={config.ask_quick_actions}
-              onChange={(next) =>
-                setConfig((prev) => ({ ...prev, ask_quick_actions: next }))
-              }
-            />
-
-            <LocalOcrSettings
-              engineMode={config.ocr_engine}
-              ocrLang={config.ocr_lang}
-              downloadUrl={config.ocr_download_url}
-              proxyUrl={config.proxy_url}
-              onChangeEngineMode={(mode) =>
-                setConfig((prev) => ({ ...prev, ocr_engine: mode }))
-              }
-              onChangeOcrLang={(lang) =>
-                setConfig((prev) => ({ ...prev, ocr_lang: lang }))
-              }
-              onChangeDownloadUrl={(url) =>
-                setConfig((prev) => ({ ...prev, ocr_download_url: url }))
-              }
-              onNotice={(kind, text) => setStatus({ kind, text })}
-            />
-
-            {/* Section 4: Network Proxy & Update Source */}
-            <section className="card">
-              <div className="card-title">
-                <span>网络与更新</span>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={() => handleTest("update")}
-                  disabled={testingTarget !== null}
-                  title="测试代理与更新源连接"
-                >
-                  <Zap size={13} />
-                  {testingTarget === "update" ? "测试中…" : "测试连接"}
-                </button>
-              </div>
-
-              <div className="switch-row" style={{ paddingTop: 0, borderTop: "none" }}>
+          {/* PANE 3: OCR, APPEARANCE & SYSTEM */}
+          {pane === "system" && (
+            <div key="system" className="v3-pane">
+              <div className="v3-pane-head">
                 <div>
-                  <div className="switch-label">代理</div>
-                  <div className="switch-desc">
-                    用于翻译、模型下载与更新，本地地址自动直连
-                  </div>
+                  <h1 className="v3-pane-title">识别与外观</h1>
+                  <p className="v3-pane-sub">离线 OCR、浅色与夜间主题、网络代理</p>
                 </div>
-                <div className="segmented" role="group" aria-label="代理模式">
+                <div className="v3-head-actions">
                   <button
                     type="button"
-                    className={`seg-btn ${proxyMode === "system" ? "active" : ""}`}
-                    onClick={() => {
-                      setProxyMode("system");
-                      setConfig((prev) => ({ ...prev, proxy_url: "" }));
-                      invoke<SystemProxyInfo>("get_system_proxy_info")
-                        .then(setSystemProxy)
-                        .catch(() => {});
-                    }}
+                    className="btn btn-sm"
+                    disabled={saving || !savedConfig}
+                    onClick={handleExportConfig}
+                    title="导出设置备份 (JSON)"
                   >
-                    跟随系统
+                    <Download size={12} /> 导出
                   </button>
                   <button
                     type="button"
-                    className={`seg-btn ${proxyMode === "custom" ? "active" : ""}`}
-                    onClick={() => setProxyMode("custom")}
+                    className="btn btn-sm"
+                    disabled={saving || !savedConfig}
+                    onClick={handleImportConfig}
+                    title="导入设置备份 (JSON)"
                   >
-                    手动
+                    <Upload size={12} /> 导入
                   </button>
                 </div>
               </div>
 
-              {proxyMode === "system" ? (
-                <div className="proxy-status-bar">
-                  <span
-                    className={`proxy-dot ${systemProxy?.enabled && systemProxy.proxyUrl ? "on" : ""}`}
-                  />
-                  <span>
-                    {systemProxy?.enabled && systemProxy.proxyUrl
-                      ? `系统代理：${systemProxy.proxyUrl}`
-                      : "未启用系统代理，直连网络"}
-                  </span>
+              <section className="card v3-card">
+                <div className="card-title">
+                  <span>外观主题</span>
                 </div>
-              ) : (
-                <div className="field" style={{ marginTop: 10 }}>
-                  <label htmlFor="custom-proxy-input">代理地址（HTTP / SOCKS5）</label>
-                  <input
-                    id="custom-proxy-input"
-                    className="input"
-                    value={config.proxy_url}
-                    onChange={(e) =>
-                      setConfig({ ...config, proxy_url: e.target.value })
-                    }
-                    placeholder="http://127.0.0.1:7890 或 socks5h://127.0.0.1:7891"
+                <div className="setting-row" style={{ paddingTop: 0, borderTop: "none" }}>
+                  <div>
+                    <div className="s-label">配色模式</div>
+                    <div className="s-desc">清透浅色与深蓝夜间，实时同步至全部浮窗</div>
+                  </div>
+                  <SlidingSegmented<ThemeMode>
+                    ariaLabel="配色模式"
+                    size="sm"
+                    value={config.theme}
+                    onChange={applyThemeSelection}
+                    options={[
+                      { value: "system", label: "跟随系统" },
+                      { value: "light", label: "浅色" },
+                      { value: "dark", label: "夜间" },
+                    ]}
                   />
                 </div>
-              )}
+              </section>
 
-              <div style={{ marginTop: 12 }}>
-                <button
-                  type="button"
-                  className="settings-disclosure-btn"
-                  aria-expanded={showUpdateMirror}
-                  onClick={() => setShowUpdateMirror((v) => !v)}
-                >
-                  {showUpdateMirror ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                  自定义更新源
-                </button>
-                {showUpdateMirror && (
-                  <div className="field" style={{ marginTop: 8 }}>
-                    <input
-                      className="input"
-                      value={config.update_feed_url}
-                      onChange={(e) =>
-                        setConfig({ ...config, update_feed_url: e.target.value })
+              <LocalOcrSettings
+                engineMode={config.ocr_engine}
+                ocrLang={config.ocr_lang}
+                downloadUrl={config.ocr_download_url}
+                proxyUrl={config.proxy_url}
+                onChangeEngineMode={(mode) =>
+                  setConfig((prev) => ({ ...prev, ocr_engine: mode }))
+                }
+                onChangeOcrLang={(lang) =>
+                  setConfig((prev) => ({ ...prev, ocr_lang: lang }))
+                }
+                onChangeDownloadUrl={(url) =>
+                  setConfig((prev) => ({ ...prev, ocr_download_url: url }))
+                }
+                onNotice={(kind, text) => setStatus({ kind, text })}
+              />
+
+              <section className="card v3-card">
+                <div className="card-title">
+                  <span>网络与更新</span>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => handleTest("update")}
+                    disabled={testingTarget !== null}
+                    title="测试代理与更新源连通性"
+                  >
+                    <Zap size={12} />
+                    {testingTarget === "update" ? "测试中…" : "测试连接"}
+                  </button>
+                </div>
+
+                <div className="setting-row" style={{ paddingTop: 0, borderTop: "none" }}>
+                  <div>
+                    <div className="s-label">网络代理</div>
+                    <div className="s-desc">用于翻译、模型下载与更新，本地地址自动直连</div>
+                  </div>
+                  <SlidingSegmented<"system" | "custom">
+                    ariaLabel="代理模式"
+                    size="sm"
+                    value={proxyMode}
+                    onChange={(mode) => {
+                      setProxyMode(mode);
+                      if (mode === "system") {
+                        setConfig((prev) => ({ ...prev, proxy_url: "" }));
+                        invoke<SystemProxyInfo>("get_system_proxy_info")
+                          .then(setSystemProxy)
+                          .catch(() => {});
                       }
-                      placeholder="留空走官方源，或填写 latest.json 的 HTTPS 地址"
+                    }}
+                    options={[
+                      { value: "system", label: "跟随系统" },
+                      { value: "custom", label: "手动" },
+                    ]}
+                  />
+                </div>
+
+                {proxyMode === "system" ? (
+                  <div className="proxy-status-bar">
+                    <span
+                      className={`proxy-dot ${systemProxy?.enabled && systemProxy.proxyUrl ? "on" : ""}`}
                     />
-                    <small>
-                      不可用时自动回退官方源，安装前强制校验签名。
-                    </small>
+                    <span>
+                      {systemProxy?.enabled && systemProxy.proxyUrl
+                        ? `系统代理：${systemProxy.proxyUrl}`
+                        : "未启用系统代理，直连网络"}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="field" style={{ marginTop: 10 }}>
+                    <label htmlFor="custom-proxy-input">代理地址（HTTP / SOCKS5）</label>
+                    <input
+                      id="custom-proxy-input"
+                      className="input"
+                      value={config.proxy_url}
+                      onChange={(e) =>
+                        setConfig({ ...config, proxy_url: e.target.value })
+                      }
+                      placeholder="http://127.0.0.1:7890 或 socks5h://127.0.0.1:7891"
+                    />
                   </div>
                 )}
-              </div>
-            </section>
 
-          </div>
-        ) : tab === "text" ? (
-          <div className="settings-grid">
-            <section className="card">
-              <div className="card-title">
-                <span>文本翻译</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div className="v3-disclosure-block">
+                  <button
+                    type="button"
+                    className="settings-disclosure-btn"
+                    aria-expanded={showUpdateMirror}
+                    onClick={() => setShowUpdateMirror((v) => !v)}
+                  >
+                    {showUpdateMirror ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                    <span>自定义更新源</span>
+                  </button>
+                  {showUpdateMirror && (
+                    <div className="v3-disclosure-body">
+                      <div className="field">
+                        <input
+                          className="input"
+                          value={config.update_feed_url}
+                          onChange={(e) =>
+                            setConfig({ ...config, update_feed_url: e.target.value })
+                          }
+                          placeholder="留空走官方源，或填写 latest.json 的 HTTPS 地址"
+                        />
+                        <small className="v3-field-hint">
+                          不可用时自动回退官方源，安装前强制校验签名。
+                        </small>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {/* PANE 4: SIDE-BY-SIDE TRANSLATION STUDIO */}
+          {pane === "text" && (
+            <div key="text" className="v3-pane v3-pane-studio">
+              <div className="studio-bar">
+                <div className="studio-lang-cluster">
+                  <span className="studio-lang-pill">自动识别</span>
+                  <ArrowRight size={13} className="studio-arrow" aria-hidden="true" />
+                  <select
+                    className="select v3-compact-select"
+                    aria-label="目标语言"
+                    value={textTargetLang}
+                    onChange={(e) => setTextTargetLang(e.target.value)}
+                  >
+                    {TARGET_LANGUAGES.map((lang) => (
+                      <option key={lang} value={lang}>
+                        {lang}
+                      </option>
+                    ))}
+                  </select>
+                  {glossaryCount > 0 && (
+                    <span className="v3-mini-badge">术语表 · {glossaryCount}</span>
+                  )}
+                </div>
+
+                <div className="studio-bar-right">
+                  <SlidingSegmented<TranslateEngine>
+                    ariaLabel="翻译引擎"
+                    size="sm"
+                    value={textEngine}
+                    onChange={setTextEngine}
+                    options={ENGINE_OPTIONS.map((eng) => ({
+                      value: eng.id,
+                      label: eng.label,
+                    }))}
+                  />
                   <button
                     type="button"
                     className="btn btn-sm"
@@ -1255,336 +1476,359 @@ export function MainSettings() {
                 </div>
               </div>
 
-              <div className="text-workbench-controls">
-                <div className="mini-engine-row">
-                  {ENGINE_OPTIONS.map((eng) => (
-                    <button
-                      key={eng.id}
-                      type="button"
-                      className={`mini-chip ${textEngine === eng.id ? "active" : ""}`}
-                      onClick={() => setTextEngine(eng.id)}
-                    >
-                      {eng.label}
-                    </button>
-                  ))}
-                </div>
-                <select
-                  className="select"
-                  style={{ width: 140, padding: "5px 8px" }}
-                  value={textTargetLang}
-                  onChange={(e) => setTextTargetLang(e.target.value)}
-                >
-                  {TARGET_LANGUAGES.map((lang) => (
-                    <option key={lang} value={lang}>
-                      {lang}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="field" style={{ marginTop: 10 }}>
-                <textarea
-                  className="textarea"
-                  rows={5}
-                  value={textInput}
-                  onChange={(e) => setTextInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                      e.preventDefault();
-                      handleTranslateText();
-                    }
-                  }}
-                  placeholder={`输入或粘贴文本，${MOD_LABEL}+Enter 翻译…`}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {textInput.trim().length} 字 · {MOD_LABEL}+Enter
-                </span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {textInput && (
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() => {
-                        setTextInput("");
-                        setTextResult(null);
-                        setTextError(null);
+              <div className="studio-grid">
+                <section className="studio-sheet">
+                  <div className="studio-sheet-head">
+                    <strong>原文</strong>
+                    {textInput && (
+                      <button
+                        type="button"
+                        className="btn-ghost-sm"
+                        onClick={() => {
+                          setTextInput("");
+                          setTextResult(null);
+                          setTextError(null);
+                        }}
+                      >
+                        清空
+                      </button>
+                    )}
+                  </div>
+                  <div className="studio-sheet-body">
+                    <textarea
+                      className="studio-textarea"
+                      value={textInput}
+                      onChange={(e) => setTextInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          handleTranslateText();
+                        }
                       }}
-                    >
-                      清空
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={handleTranslateText}
-                    disabled={textBusy || !textInput.trim()}
-                  >
-                    <Languages size={14} /> {textBusy ? "翻译中…" : "翻译"}
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            {textError && <div className="error-box">{textError}</div>}
-
-            {textBusy && textStreamPreview && !textResult && (
-              <section className="card">
-                <div className="card-title">
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span className="pulse-dot" />
-                    译文 · {textTargetLang}
-                  </span>
-                </div>
-                <div className="result-translated">
-                  {textStreamPreview}
-                  <span className="stream-cursor" />
-                </div>
-              </section>
-            )}
-
-            {textResult && (
-              <section className="card">
-                <div className="card-title">
-                  <span>
-                    译文 · {textResult.targetLang} · {textResult.elapsedMs}ms
-                  </span>
-                  <div style={{ display: "flex", gap: 6 }}>
+                      placeholder={`输入或粘贴需要翻译的文本，按 ${MOD_LABEL}+Enter 立即翻译…`}
+                    />
+                  </div>
+                  <div className="studio-sheet-foot">
+                    <span className="studio-counter">{textInput.trim().length} 字</span>
                     <button
                       type="button"
-                      className="btn btn-sm"
-                      onClick={() => speakDirectText(textResult.translatedText)}
-                      title="朗读"
+                      className="btn btn-primary btn-sm"
+                      onClick={handleTranslateText}
+                      disabled={textBusy || !textInput.trim()}
                     >
-                      <Volume2 size={12} /> 朗读
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-primary"
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(textResult.translatedText);
-                        setCopiedTextOut(true);
-                        setTimeout(() => setCopiedTextOut(false), 1500);
-                      }}
-                    >
-                      {copiedTextOut ? <Check size={12} /> : <Copy size={12} />}
-                      {copiedTextOut ? "已复制" : "复制"}
+                      <Languages size={13} />
+                      {textBusy ? "翻译中…" : "翻译"}
+                      <kbd className="kbd-cap kbd-cap-inv">{MOD_LABEL}↵</kbd>
                     </button>
                   </div>
+                </section>
+
+                <section className="studio-sheet studio-sheet-result">
+                  <div className="studio-sheet-head">
+                    <strong>
+                      {textResult
+                        ? `译文 · ${textResult.targetLang}`
+                        : textBusy
+                          ? `译文 · ${textTargetLang}`
+                          : "译文"}
+                    </strong>
+                    {textResult && (
+                      <span className="studio-latency">{textResult.elapsedMs}ms</span>
+                    )}
+                  </div>
+                  <div className="studio-sheet-body">
+                    {textError ? (
+                      <div className="error-box">{textError}</div>
+                    ) : textBusy && textStreamPreview && !textResult ? (
+                      <div className="studio-prose">
+                        {textStreamPreview}
+                        <span className="stream-cursor" />
+                      </div>
+                    ) : textBusy && !textResult ? (
+                      <div className="loading-status">
+                        <span className="pulse-dot" />
+                        <span>正在翻译为 {textTargetLang}…</span>
+                      </div>
+                    ) : textResult ? (
+                      <div className="studio-prose">{textResult.translatedText}</div>
+                    ) : (
+                      <div className="studio-placeholder">
+                        译文将在此实时呈现，支持流式输出与术语表替换。
+                      </div>
+                    )}
+                  </div>
+                  <div className="studio-sheet-foot">
+                    <span className="studio-counter">
+                      {textResult ? textResult.model : ENGINE_OPTIONS.find((e) => e.id === textEngine)?.label}
+                    </span>
+                    <div className="studio-result-actions">
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={!textResult}
+                        onClick={() => textResult && speakDirectText(textResult.translatedText)}
+                        title="朗读译文"
+                      >
+                        <Volume2 size={12} /> 朗读
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        disabled={!textResult}
+                        onClick={async () => {
+                          if (!textResult) return;
+                          await navigator.clipboard.writeText(textResult.translatedText);
+                          setCopiedTextOut(true);
+                          setTimeout(() => setCopiedTextOut(false), 1500);
+                        }}
+                      >
+                        {copiedTextOut ? (
+                          <span className="icon-morph">
+                            <Check size={12} />
+                          </span>
+                        ) : (
+                          <Copy size={12} />
+                        )}
+                        {copiedTextOut ? "已复制" : "复制"}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          )}
+
+          {/* PANE 5: HISTORY ARCHIVE */}
+          {pane === "history" && (
+            <div key="history" className="v3-pane">
+              <div className="v3-pane-head">
+                <div>
+                  <h1 className="v3-pane-title">历史</h1>
+                  <p className="v3-pane-sub">共 {history.length} 条本地记录</p>
                 </div>
-                <div className="result-translated">{textResult.translatedText}</div>
-              </section>
-            )}
-          </div>
-        ) : (
-          <div className="history-list">
-            <div className="history-toolbar">
-              <div className="history-search-wrap">
-                <Search size={13} className="history-search-icon" />
-                <input
-                  className="input history-search-input"
-                  value={historyQuery}
-                  onChange={(e) => setHistoryQuery(e.target.value)}
-                  placeholder="搜索原文、译文或模型…"
-                />
-                {historyQuery && (
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    onClick={() => setHistoryQuery("")}
-                    title="清除搜索"
-                  >
-                    <X size={12} />
-                  </button>
+                {history.length > 0 && (
+                  <div className="v3-head-actions">
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => exportHistory("markdown")}
+                      title="导出为 Markdown"
+                    >
+                      <Download size={12} /> MD
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => exportHistory("json")}
+                      title="导出为 JSON"
+                    >
+                      <Download size={12} /> JSON
+                    </button>
+                    <Popconfirm
+                      message={`清空全部 ${history.length} 条历史记录？`}
+                      confirmLabel="清空"
+                      onConfirm={async () => {
+                        try {
+                          await invoke("clear_history");
+                          setHistory([]);
+                          setStatus({ kind: "ok", text: "已清空历史记录" });
+                        } catch (err) {
+                          setStatus({ kind: "err", text: String(err) });
+                        }
+                      }}
+                    >
+                      {(triggerProps) => (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-danger"
+                          {...triggerProps}
+                        >
+                          <Trash2 size={12} /> 清空
+                        </button>
+                      )}
+                    </Popconfirm>
+                  </div>
                 )}
               </div>
 
-              <div className="segmented">
-                {(
-                  [
-                    { id: "all", label: "全部" },
-                    { id: "translate", label: "翻译" },
-                    { id: "ocr", label: "识字" },
-                  ] as const
-                ).map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    className={`seg-btn ${historyModeFilter === f.id ? "active" : ""}`}
-                    onClick={() => setHistoryModeFilter(f.id)}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+              {historyLoadError && <div className="error-box">{historyLoadError}</div>}
 
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
-            >
-              <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-                共 {history.length} 条
-                {filteredHistory.length !== history.length ? ` · 匹配 ${filteredHistory.length} 条` : ""}
-              </span>
-              {history.length > 0 && (
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={() => exportHistory("markdown")}
-                  >
-                    <Download size={12} /> 导出 MD
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={() => exportHistory("json")}
-                  >
-                    <Download size={12} /> 导出 JSON
-                  </button>
-                  <Popconfirm
-                    message="清空全部历史记录？"
-                    confirmLabel="清空"
-                    onConfirm={async () => {
-                      await invoke("clear_history");
-                      setHistory([]);
-                    }}
-                  >
-                    {(triggerProps) => (
-                      <button type="button" className="btn btn-sm" {...triggerProps}>
-                        <Trash2 size={12} /> 清空
-                      </button>
-                    )}
-                  </Popconfirm>
+              <div className="history-toolbar">
+                <div className="history-search-wrap">
+                  <Search size={13} className="history-search-icon" />
+                  <input
+                    className="input history-search-input"
+                    value={historyQuery}
+                    onChange={(e) => setHistoryQuery(e.target.value)}
+                    placeholder="搜索原文、译文或模型…"
+                  />
+                  {historyQuery && (
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => setHistoryQuery("")}
+                      title="清除搜索"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                <SlidingSegmented<"all" | "translate" | "ocr">
+                  ariaLabel="历史类型筛选"
+                  size="sm"
+                  value={historyModeFilter}
+                  onChange={setHistoryModeFilter}
+                  options={[
+                    { value: "all", label: "全部" },
+                    { value: "translate", label: "翻译" },
+                    { value: "ocr", label: "识字" },
+                  ]}
+                />
+              </div>
+
+              {filteredHistory.length === 0 ? (
+                <div className="card v3-empty-state">
+                  <History size={22} className="v3-empty-icon" />
+                  <div>
+                    {history.length === 0
+                      ? `暂无记录 · 按 ${formatShortcutLabel(config.shortcut)} 开始截图翻译`
+                      : "没有匹配的记录"}
+                  </div>
+                </div>
+              ) : (
+                <div className="history-cards-col">
+                  {filteredHistory.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`history-item${exitingHistoryIds[item.id] ? " exiting" : ""}`}
+                    >
+                      <div className="history-meta">
+                        <span className="history-meta-text">
+                          <span className="v3-mini-badge">
+                            {item.mode === "ocr" ? "识字" : `${item.sourceLang} → ${item.targetLang}`}
+                          </span>
+                          <span>
+                            {item.model} · {item.elapsedMs}ms
+                            {item.createdAtMs ? ` · ${formatTimestamp(item.createdAtMs)}` : ""}
+                          </span>
+                        </span>
+                        <div className="history-item-actions">
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() =>
+                              invoke("reopen_history_item", { id: item.id }).catch((err) =>
+                                setStatus({ kind: "err", text: String(err) })
+                              )
+                            }
+                            title="在浮窗中重新打开"
+                          >
+                            <ExternalLink size={12} /> 浮窗
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() => copyHistory(item)}
+                          >
+                            {copiedId === item.id ? (
+                              <>
+                                <span className="icon-morph">
+                                  <Check size={12} />
+                                </span>
+                                已复制
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={12} /> 复制
+                              </>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-btn history-del-btn"
+                            onClick={() => void deleteHistoryItem(item.id)}
+                            title="删除"
+                            aria-label="删除此条记录"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="history-body">
+                        {item.imageDataUrl && (
+                          <img
+                            src={item.imageDataUrl}
+                            alt=""
+                            className="history-thumb"
+                          />
+                        )}
+                        <div className="history-body-text">
+                          <div className="history-text">{item.translatedText}</div>
+                          {item.originalText && item.mode !== "ocr" && (
+                            <div className="history-orig">{item.originalText}</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
+          )}
+        </div>
 
-            {filteredHistory.length === 0 ? (
-              <div
-                className="card"
-                style={{
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                  padding: 36,
-                  fontSize: 13,
-                }}
-              >
-                {history.length === 0
-                  ? `暂无记录，按 ${formatShortcutLabel(config.shortcut || "Alt+Q")} 截图`
-                  : "没有匹配的记录"}
-              </div>
-            ) : (
-              filteredHistory.map((item) => (
-                <div key={item.id} className="history-item">
-                  <div className="history-meta">
-                    <span>
-                      {item.mode === "ocr"
-                        ? `识字 (${item.sourceLang})`
-                        : `${item.sourceLang} → ${item.targetLang}`}{" "}
-                      · {item.model} · {item.elapsedMs}ms
-                      {item.createdAtMs ? ` · ${formatTimestamp(item.createdAtMs)}` : ""}
-                    </span>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() =>
-                          invoke("reopen_history_item", { id: item.id }).catch((err) =>
-                            setStatus({ kind: "err", text: String(err) })
-                          )
-                        }
-                        title="在浮窗中打开"
-                      >
-                        <ExternalLink size={12} /> 浮窗
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => copyHistory(item)}
-                      >
-                        {copiedId === item.id ? (
-                          <>
-                            <Check size={12} /> 已复制
-                          </>
-                        ) : (
-                          <>
-                            <Copy size={12} /> 复制
-                          </>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => deleteHistoryItem(item.id)}
-                        title="删除"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="history-body">
-                    {item.imageDataUrl && (
-                      <img
-                        src={item.imageDataUrl}
-                        alt=""
-                        className="history-thumb"
-                      />
-                    )}
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div className="history-text">{item.translatedText}</div>
-                      {item.originalText && item.mode !== "ocr" && (
-                        <div className="history-orig">{item.originalText}</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
+        {/* Floating Transient Toast */}
+        {status.text && (
+          <div
+            className={`v3-toast ${status.kind}${dirty ? " above-dock" : ""}`}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="v3-toast-dot" aria-hidden="true" />
+            <span className="v3-toast-text">{status.text}</span>
+            <button
+              type="button"
+              className="v3-toast-close"
+              onClick={() => setStatus({ kind: "idle", text: "" })}
+              aria-label="关闭提示"
+            >
+              <X size={12} />
+            </button>
           </div>
         )}
-      </main>
-      {(tab === "settings" || status.text) && (
-        <footer className="footer-bar">
-          <div className={`status-msg ${status.kind}`} role="status">
-            {status.text && <div>{status.text}</div>}
-            {dirty && <div className="draft-status">有未保存修改</div>}
-            {!status.text && !dirty && tab === "settings" && (
-              <div>
-                {savedConfig
-                  ? "已保存"
-                  : configLoadError ?? "正在读取设置…"}
-              </div>
-            )}
-            {historyLoadError && tab === "history" && (
-              <div style={{ color: "var(--danger)" }}>{historyLoadError}</div>
-            )}
+
+        {/* Floating Unsaved Changes Dock (V2/V3 non-intrusive pill) */}
+        <div
+          className={`v3-save-dock${dirty ? " show" : ""}`}
+          aria-hidden={!dirty}
+        >
+          <span className="v3-save-dock-label">
+            <span className="v3-save-dot" aria-hidden="true" />
+            有未保存的设置更改
+          </span>
+          <div className="v3-save-dock-actions">
+            <button
+              type="button"
+              className="v3-dock-btn-ghost"
+              disabled={saving || !dirty}
+              onClick={handleDiscard}
+            >
+              <RotateCcw size={12} /> 放弃
+            </button>
+            <button
+              type="button"
+              className="v3-dock-btn-solid"
+              disabled={saving || !dirty}
+              onClick={handleSave}
+            >
+              {saving ? "保存中…" : "保存"}
+              {!saving && <kbd className="kbd-cap kbd-cap-dock">{MOD_LABEL}+S</kbd>}
+            </button>
           </div>
-          {tab === "settings" && (
-            <div className="footer-actions">
-              <button type="button" className="btn btn-sm" disabled={saving || !savedConfig}
-                onClick={handleExportConfig} title="导出设置">
-                <Download size={13} /> 导出
-              </button>
-              <button type="button" className="btn btn-sm" disabled={saving || !savedConfig}
-                onClick={handleImportConfig} title="导入设置">
-                <Upload size={13} /> 导入
-              </button>
-              <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving || !dirty}>
-                {saving ? "保存中…" : "保存"}
-              </button>
-            </div>
-          )}
-        </footer>
-      )}
+        </div>
+      </main>
+
       <UpdateDialog update={appUpdate} currentVersion={appVersion} />
     </div>
   );

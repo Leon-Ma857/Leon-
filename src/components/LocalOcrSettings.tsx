@@ -21,6 +21,7 @@ import {
 import { listenToWindow } from "../utils/windowEvents";
 import { IS_MAC } from "../utils/platform";
 import { Popconfirm } from "./Popconfirm";
+import { SlidingSegmented } from "./SlidingSegmented";
 import "../styles/local-ocr.css";
 
 export interface LocalOcrSettingsProps {
@@ -297,21 +298,18 @@ export function LocalOcrSettings({
         <span className="card-subtitle">RapidOCR 离线引擎</span>
       </div>
 
-      <div className="field">
-        <label>识字引擎</label>
-        <div className="chip-row local-ocr-mode-row">
-          {ENGINE_MODES.map((mode) => (
-            <button
-              key={mode.id}
-              type="button"
-              className={`chip ${engineMode === mode.id ? "active" : ""}`}
-              onClick={() => onChangeEngineMode(mode.id)}
-            >
-              {mode.label}
-            </button>
-          ))}
+      <div className="setting-row" style={{ paddingTop: 0, borderTop: "none" }}>
+        <div>
+          <div className="s-label">识字引擎</div>
+          <div className="s-desc">{activeModeDesc}</div>
         </div>
-        <small>{activeModeDesc}</small>
+        <SlidingSegmented<LocalOcrEngineMode>
+          ariaLabel="识字引擎"
+          size="sm"
+          value={engineMode}
+          onChange={onChangeEngineMode}
+          options={ENGINE_MODES.map((m) => ({ value: m.id, label: m.label }))}
+        />
       </div>
 
       <div className="local-ocr-status-box">

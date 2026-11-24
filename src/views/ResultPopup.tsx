@@ -33,6 +33,7 @@ import {
   TranslateEngine,
 } from "../types";
 import { AskQuickActionsBar } from "../components/AskQuickActionsBar";
+import { SlidingSegmented, SlidingSegmentOption } from "../components/SlidingSegmented";
 
 const OPACITY_LEVELS = [1, 0.78, 0.52];
 
@@ -513,6 +514,40 @@ export function ResultPopup() {
       doneTranslate.originalText.replace(/\r\n/g, "\n").trim()
     : false;
 
+  const activeSegmentMode: "translate" | "ocr" | "ask" =
+    currentMode === "ocr" ? "ocr" : currentMode === "ask" ? "ask" : "translate";
+  const segmentOptions: SlidingSegmentOption<"translate" | "ocr" | "ask">[] = [
+    {
+      value: "translate",
+      label: (
+        <>
+          <Languages size={12} /> 翻译
+        </>
+      ),
+    },
+  ];
+  if (hasSourceImage || currentMode === "ocr") {
+    segmentOptions.push({
+      value: "ocr",
+      title: !hasSourceImage ? "历史 OCR 识别结果" : undefined,
+      label: (
+        <>
+          <ScanText size={12} /> 识字
+        </>
+      ),
+    });
+  }
+  if (hasSourceImage || hasSourceText) {
+    segmentOptions.push({
+      value: "ask",
+      label: (
+        <>
+          <Sparkles size={12} /> 问 AI
+        </>
+      ),
+    });
+  }
+
   return (
     <div className="result-shell">
       <div
@@ -520,46 +555,26 @@ export function ResultPopup() {
         data-enter-seq={enterSeq}
       >
         <div className="result-header" ref={headerRef} data-tauri-drag-region>
-          <div className="mode-pills">
-            <button
-              type="button"
-              className={`mode-pill ${currentMode === "translate" ? "active" : ""}`}
-              onClick={() => switchMode("translate", activeEngine, activeTargetLang)}
-            >
-              <Languages size={12} /> 翻译
-            </button>
-            {!hasSourceImage && currentMode === "ocr" && (
-              <button
-                type="button"
-                className="mode-pill active"
-                onClick={() => undefined}
-                title="历史 OCR 识别结果"
-              >
-                <ScanText size={12} /> 识字
-              </button>
-            )}
+          <div className="result-header-modes">
+            <SlidingSegmented<"translate" | "ocr" | "ask">
+              ariaLabel="结果模式"
+              size="xs"
+              value={activeSegmentMode}
+              onChange={(next) => {
+                if (next === "translate") {
+                  switchMode("translate", activeEngine, activeTargetLang);
+                } else if (next === "ocr") {
+                  if (hasSourceImage) switchMode("ocr");
+                } else {
+                  switchMode("ask");
+                }
+              }}
+              options={segmentOptions}
+            />
             {hasSourceImage && (
               <button
                 type="button"
-                className={`mode-pill ${currentMode === "ocr" ? "active" : ""}`}
-                onClick={() => switchMode("ocr")}
-              >
-                <ScanText size={12} /> 识字
-              </button>
-            )}
-            {(hasSourceImage || hasSourceText) && (
-              <button
-                type="button"
-                className={`mode-pill ${currentMode === "ask" ? "active" : ""}`}
-                onClick={() => switchMode("ask")}
-              >
-                <Sparkles size={12} /> 问 AI
-              </button>
-            )}
-            {hasSourceImage && (
-              <button
-                type="button"
-                className="mode-pill"
+                className="result-pin-mode-btn"
                 onClick={() => switchMode("pin")}
                 title="转为桌面贴图"
               >
@@ -586,12 +601,18 @@ export function ResultPopup() {
                 onClick={copyCropImage}
                 title="复制截图"
               >
-                {copiedKey === "img" ? <Check size={13} /> : <Copy size={13} />}
+                {copiedKey === "img" ? (
+                  <span className="icon-morph">
+                    <Check size={13} />
+                  </span>
+                ) : (
+                  <Copy size={13} />
+                )}
               </button>
             )}
             <button
               type="button"
-              className={`icon-btn ${pinned ? "active" : ""}`}
+              className={`icon-btn ${pinned ? "active pinned" : ""}`}
               onClick={toggleAlwaysOnTop}
               title={pinned ? "取消置顶" : "窗口置顶"}
             >
@@ -1011,7 +1032,10 @@ export function ResultPopup() {
                 >
                   {copiedKey === "trans" ? (
                     <>
-                      <Check size={11} /> 已复制
+                      <span className="icon-morph">
+                        <Check size={11} />
+                      </span>{" "}
+                      已复制
                     </>
                   ) : (
                     <>
