@@ -3,8 +3,8 @@
   position: relative;
   flex-shrink: 0;
   border-top: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(246, 249, 253, 0.94) 0%, rgba(237, 242, 249, 0.94) 100%);
-  backdrop-filter: blur(18px) saturate(170%);
+  background: rgba(248, 250, 253, 0.96);
+  backdrop-filter: blur(18px) saturate(160%);
 }
 
 .ask-actions-row {
@@ -52,8 +52,7 @@
   padding: 0 11px;
   border-radius: 999px;
   border: 1px solid var(--btn-sec-border);
-  border-bottom-color: var(--btn-sec-edge);
-  background: linear-gradient(180deg, var(--btn-sec-top) 0%, var(--btn-sec-bot) 100%);
+  background: var(--btn-sec-top);
   color: var(--text-main);
   font-size: 11.5px;
   font-weight: 500;
@@ -61,29 +60,22 @@
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  box-shadow:
-    0 1.5px 0 rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 var(--btn-sec-hi);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
   transition:
-    background 0.16s var(--ease-spring),
-    border-color 0.16s var(--ease-spring),
-    color 0.16s ease,
-    transform 0.14s var(--ease-spring),
-    box-shadow 0.16s ease;
+    background-color 0.14s ease,
+    border-color 0.14s ease,
+    color 0.14s ease,
+    transform 0.12s var(--ease-snap);
 }
 
 .ask-action-pill:hover:not(:disabled) {
   border-color: var(--accent-soft-border);
-  background: linear-gradient(180deg, var(--accent-soft-top) 0%, var(--accent-soft-bot) 100%);
+  background: var(--accent-soft-top);
   color: var(--accent-soft-text);
-  transform: translateY(-1px);
-  box-shadow:
-    0 2px 6px rgba(47, 111, 237, 0.14),
-    inset 0 1px 0 var(--accent-soft-hi);
 }
 
 .ask-action-pill:active:not(:disabled) {
-  transform: translateY(0) scale(0.96);
+  transform: scale(0.96);
 }
 
 .ask-action-pill:disabled {
@@ -636,13 +628,13 @@
   }
 }
 
-/* ==================== Dark Mode Theme Support (Midnight Slate 3D) ==================== */
+/* ==================== Dark Mode Theme Support (Midnight Slate Flat) ==================== */
 :root[data-theme="dark"] .ask-actions-bar {
-  background: linear-gradient(180deg, rgba(24, 30, 44, 0.94) 0%, rgba(17, 22, 34, 0.94) 100%);
+  background: rgba(22, 28, 41, 0.96);
 }
 
 :root[data-theme="dark"] .ask-actions-editor {
-  background: linear-gradient(180deg, rgba(28, 35, 50, 0.98) 0%, rgba(20, 26, 38, 0.98) 100%);
+  background: rgba(25, 33, 49, 0.98);
 }
 
 :root[data-theme="dark"] .ask-action-add-btn {
@@ -654,7 +646,7 @@
 }
 
 :root[data-theme="dark"] .ask-action-add-btn.active {
-  background: linear-gradient(180deg, var(--btn-pri-top) 0%, var(--btn-pri-bot) 100%);
+  background: var(--btn-pri-top);
   border-color: var(--btn-pri-border);
   color: var(--accent-ink);
 }
@@ -669,22 +661,25 @@
 }
 
 :root[data-theme="dark"] .ask-editor-btn {
-  background: linear-gradient(180deg, var(--btn-sec-top) 0%, var(--btn-sec-bot) 100%);
+  background: var(--btn-sec-top);
   color: var(--text-main);
 }
 
-:root[data-theme="dark"] .ask-editor-btn:hover:not(:disabled) {
+:root[data-theme="dark"] .ask-editor-btn:hover:not(:disabled):not(.ask-editor-btn-primary) {
+  background: var(--bg-subtle);
   border-color: var(--accent-soft-border);
 }
 
 :root[data-theme="dark"] .ask-editor-btn-primary {
-  background: linear-gradient(180deg, var(--btn-pri-top) 0%, var(--btn-pri-bot) 100%);
+  background: var(--btn-pri-top);
   border-color: var(--btn-pri-border);
   color: var(--accent-ink);
 }
 
 :root[data-theme="dark"] .ask-editor-btn-primary:hover:not(:disabled) {
-  filter: brightness(1.06);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-ink);
 }
 
 :root[data-theme="dark"] .ask-editor-item-label,
@@ -703,12 +698,12 @@
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] .ask-actions-bar,
   :root:not([data-theme]) .ask-actions-bar {
-    background: linear-gradient(180deg, rgba(24, 30, 44, 0.94) 0%, rgba(17, 22, 34, 0.94) 100%);
+    background: rgba(22, 28, 41, 0.96);
   }
 
   :root[data-theme="system"] .ask-actions-editor,
   :root:not([data-theme]) .ask-actions-editor {
-    background: linear-gradient(180deg, rgba(28, 35, 50, 0.98) 0%, rgba(20, 26, 38, 0.98) 100%);
+    background: rgba(25, 33, 49, 0.98);
   }
 
   :root[data-theme="system"] .ask-action-add-btn,
@@ -723,7 +718,7 @@
 
   :root[data-theme="system"] .ask-action-add-btn.active,
   :root:not([data-theme]) .ask-action-add-btn.active {
-    background: linear-gradient(180deg, var(--btn-pri-top) 0%, var(--btn-pri-bot) 100%);
+    background: var(--btn-pri-top);
     border-color: var(--btn-pri-border);
     color: var(--accent-ink);
   }
@@ -741,25 +736,28 @@
 
   :root[data-theme="system"] .ask-editor-btn,
   :root:not([data-theme]) .ask-editor-btn {
-    background: linear-gradient(180deg, var(--btn-sec-top) 0%, var(--btn-sec-bot) 100%);
+    background: var(--btn-sec-top);
     color: var(--text-main);
   }
 
-  :root[data-theme="system"] .ask-editor-btn:hover:not(:disabled),
-  :root:not([data-theme]) .ask-editor-btn:hover:not(:disabled) {
+  :root[data-theme="system"] .ask-editor-btn:hover:not(:disabled):not(.ask-editor-btn-primary),
+  :root:not([data-theme]) .ask-editor-btn:hover:not(:disabled):not(.ask-editor-btn-primary) {
+    background: var(--bg-subtle);
     border-color: var(--accent-soft-border);
   }
 
   :root[data-theme="system"] .ask-editor-btn-primary,
   :root:not([data-theme]) .ask-editor-btn-primary {
-    background: linear-gradient(180deg, var(--btn-pri-top) 0%, var(--btn-pri-bot) 100%);
+    background: var(--btn-pri-top);
     border-color: var(--btn-pri-border);
     color: var(--accent-ink);
   }
 
   :root[data-theme="system"] .ask-editor-btn-primary:hover:not(:disabled),
   :root:not([data-theme]) .ask-editor-btn-primary:hover:not(:disabled) {
-    filter: brightness(1.06);
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    color: var(--accent-ink);
   }
 
   :root[data-theme="system"] .ask-editor-item-label,

@@ -1,6 +1,6 @@
 [package]
 name = "snaptrans"
-version = "0.8.6"
+version = "0.8.7"
 description = "Quick WeChat-style screenshot translation desktop app"
 authors = ["SnapTrans Contributors"]
 edition = "2021"

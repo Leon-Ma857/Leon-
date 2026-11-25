@@ -43,6 +43,8 @@ import {
 } from "../types";
 import {
   ComputedBlockLayout,
+  INPLACE_FONT_FAMILY,
+  INPLACE_FONT_WEIGHT,
   computeInPlaceBlockLayouts,
   createThemeSampleContext as createBlockThemeSampleContext,
   wrapCanvasText,
@@ -672,15 +674,17 @@ export function OverlayCapture() {
         if (layouts.length > 0) {
           ctx.textBaseline = "top";
           for (const lay of layouts) {
+            if (lay.unchanged) continue;
             ctx.fillStyle = lay.bgColor;
             ctx.fillRect(lay.patchX, lay.patchY, lay.patchW, lay.patchH);
             ctx.fillStyle = lay.textColor;
-            ctx.font = `500 ${lay.fontSize}px "Segoe UI", "Microsoft YaHei", sans-serif`;
+            ctx.font = `${INPLACE_FONT_WEIGHT} ${lay.fontSize}px ${INPLACE_FONT_FAMILY}`;
+            const leadingOffset = Math.max(0, (lay.lineHeight - lay.fontSize) * 0.45);
             lay.lines.forEach((line, idx) => {
               ctx.fillText(
                 line,
                 lay.patchX + lay.textOffsetX,
-                lay.patchY + lay.textOffsetY + idx * lay.lineHeight,
+                lay.patchY + lay.textOffsetY + leadingOffset + idx * lay.lineHeight,
                 lay.maxTextW
               );
             });
@@ -693,13 +697,13 @@ export function OverlayCapture() {
       const padY = Math.max(2, Math.round(sh * 0.05));
       const maxWidth = sw - padX * 2;
       const maxHeight = sh - padY * 2;
-      const minFont = Math.max(8, Math.round(9 * scaleX));
-      let fontSize = Math.min(Math.round(28 * scaleX), Math.floor(maxHeight / 1.3));
+      const minFont = Math.max(8, Math.round(8.5 * scaleX));
+      let fontSize = Math.min(Math.round(22 * scaleX), Math.floor(maxHeight / 1.25));
       let lines: string[] = [];
       let lineHeight = 0;
       for (; fontSize >= minFont; fontSize--) {
-        ctx.font = `500 ${fontSize}px "Segoe UI", "Microsoft YaHei", sans-serif`;
-        lineHeight = fontSize * 1.3;
+        ctx.font = `${INPLACE_FONT_WEIGHT} ${fontSize}px ${INPLACE_FONT_FAMILY}`;
+        lineHeight = fontSize * 1.24;
         lines = wrapCanvasText(ctx, translatedText.trim(), maxWidth);
         if (lines.length * lineHeight <= maxHeight) break;
       }
@@ -2358,6 +2362,20 @@ export function OverlayCapture() {
               <div className="inplace-blocks-layer">
                 {blockLayouts.map((lay) => {
                   const isHovered = hoveredBlockKey === `${idx}-${lay.index}`;
+                  if (lay.unchanged) {
+                    return (
+                      <div
+                        key={lay.index}
+                        className={`inplace-block-patch unchanged ${isHovered ? "highlighted" : ""}`}
+                        style={{
+                          left: lay.patchX,
+                          top: lay.patchY,
+                          width: lay.patchW,
+                          height: lay.patchH,
+                        }}
+                      />
+                    );
+                  }
                   return (
                     <div
                       key={lay.index}
@@ -2392,7 +2410,7 @@ export function OverlayCapture() {
                   style={{
                     background: theme.bgColor,
                     color: theme.textColor,
-                    fontSize: `${Math.max(11, Math.min(16, Math.round(r.h * 0.08 + 8)))}px`,
+                    fontSize: `${Math.max(10, Math.min(14, Math.round(r.h * 0.065 + 7.5)))}px`,
                   }}
                 >
                   {translatedText}
